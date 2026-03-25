@@ -1,0 +1,5 @@
+{
+  "name": "Rental Property Tracker",
+  "description": "A comprehensive dashboard for landlords to track rent, payments, fees, and generate statements with automatic late fee calculations.",
+  "requestFramePermissions": []
+}

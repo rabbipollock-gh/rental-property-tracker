@@ -1,0 +1,390 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useStore } from '../hooks/useStore';
+import { Modal } from '../components/Modal';
+import { calculateMonthStats, formatCurrency } from '../utils/calculations';
+import { Plus, ChevronRight, AlertCircle, CheckCircle, Upload, ChevronDown, ChevronUp } from 'lucide-react';
+import { MONTH_NAMES } from '../constants';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import * as Papa from 'papaparse';
+import { ImportResult } from '../types';
+
+export const Dashboard: React.FC = () => {
+  const { data, addMonth, importData } = useStore();
+  const navigate = useNavigate();
+  const [isAddModalOpen, setAddModalOpen] = useState(false);
+  const [isImportModalOpen, setImportModalOpen] = useState(false);
+  const [showOutstandingBreakdown, setShowOutstandingBreakdown] = useState(false);
+  const [importError, setImportError] = useState('');
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // New Month Form State - Improved with auto-suggestions
+  const latestRecord = data.records.length > 0 ? data.records[0] : null;
+
+  const getNextMonth = () => {
+    if (!latestRecord) return new Date().getMonth() + 1;
+    return latestRecord.month === 12 ? 1 : latestRecord.month + 1;
+  };
+
+  const getNextYear = () => {
+    if (!latestRecord) return new Date().getFullYear();
+    return latestRecord.month === 12 ? latestRecord.year + 1 : latestRecord.year;
+  };
+
+  const [year, setYear] = useState(getNextYear());
+  const [month, setMonth] = useState(getNextMonth());
+  const [rent, setRent] = useState(latestRecord?.monthlyRent || 1500);
+  const [dueDate, setDueDate] = useState(() => {
+    const nextYear = getNextYear();
+    const nextMonth = String(getNextMonth()).padStart(2, '0');
+    return `${nextYear}-${nextMonth}-01`;
+  });
+
+  // Update form when modal opens (if records changed)
+  useEffect(() => {
+    if (isAddModalOpen) {
+      const nextYear = getNextYear();
+      const nextMonth = getNextMonth();
+      setYear(nextYear);
+      setMonth(nextMonth);
+      setRent(latestRecord?.monthlyRent || 1500);
+      setDueDate(`${nextYear}-${String(nextMonth).padStart(2, '0')}-01`);
+    }
+  }, [isAddModalOpen, latestRecord]);
+
+  const handleAddMonth = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!dueDate) return;
+    addMonth(year, month, rent, dueDate);
+    setAddModalOpen(false);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        if (results.errors.length > 0) {
+          setImportError('Error parsing CSV. Please check the format.');
+          return;
+        }
+        const result = importData(results.data);
+        setImportResult(result);
+        setImportError('');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      },
+      error: (error) => {
+        setImportError(error.message);
+      }
+    });
+  };
+
+  const stats = data.records.map(r => {
+    const s = calculateMonthStats(r);
+    return {
+      ...r,
+      stats: s
+    };
+  });
+
+  const totalOutstanding = stats.reduce((sum, r) => sum + r.stats.remainingBalance, 0);
+  const totalRentOwed = stats.reduce((sum, r) => sum + r.stats.rentOwed, 0);
+  const totalLateFeesOwed = stats.reduce((sum, r) => sum + r.stats.lateFeesOwed, 0);
+  const totalEvictionFeesOwed = stats.reduce((sum, r) => sum + r.stats.evictionFeesOwed, 0);
+  const totalOtherFeesOwed = stats.reduce((sum, r) => sum + r.stats.otherFeesOwed, 0);
+
+  const totalCollected = stats.reduce((sum, r) => sum + r.stats.totalPayments, 0);
+  const totalTenantExpenses = data.records.reduce((sum, r) => sum + (r.expenses || []).reduce((s, e) => s + e.amount, 0), 0);
+  const totalPropertyExpenses = (data.propertyExpenses || []).reduce((sum, e) => sum + e.amount, 0);
+  const netCashFlow = totalCollected - totalTenantExpenses - totalPropertyExpenses;
+
+  // Global expenses by month "YYYY-MM"
+  const globalExpensesByMonth: Record<string, number> = {};
+  (data.propertyExpenses || []).forEach(e => {
+     if (e.date) {
+        const monthKey = e.date.substring(0, 7); // "YYYY-MM"
+        globalExpensesByMonth[monthKey] = (globalExpensesByMonth[monthKey] || 0) + e.amount;
+     }
+  });
+
+  // Chart Data (Last 6 months)
+  const chartData = [...stats].reverse().slice(0, 6).reverse().map(s => {
+    const monthKey = `${s.year}-${String(s.month).padStart(2, '0')}`;
+    const propertyExp = globalExpensesByMonth[monthKey] || 0;
+    return {
+      id: s.id,
+      name: `${(MONTH_NAMES[s.month - 1] || '').substring(0, 3)} ${s.year}`,
+      collected: s.stats.totalPayments,
+      owed: s.stats.totalOwed,
+      expenses: (s.expenses || []).reduce((sum, e) => sum + e.amount, 0) + propertyExp
+    };
+  });
+
+  const handleChartClick = (data: any) => {
+    if (data && data.activePayload && data.activePayload.length > 0) {
+      const monthId = data.activePayload[0].payload.id;
+      if (monthId) {
+        navigate(`/month/${monthId}`);
+      }
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-500">Overview of your rental property performance.</p>
+        </div>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => setImportModalOpen(true)}
+            className="flex items-center space-x-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg transition shadow-sm"
+          >
+            <Upload size={18} />
+            <span>Import CSV</span>
+          </button>
+          <button
+            onClick={() => setAddModalOpen(true)}
+            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition shadow-sm"
+          >
+            <Plus size={18} />
+            <span>New Month</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div
+          className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-shadow"
+          onClick={() => setShowOutstandingBreakdown(!showOutstandingBreakdown)}
+        >
+          <div className="flex justify-between items-center">
+            <h3 className="text-sm font-medium text-gray-500">Total Outstanding</h3>
+            {showOutstandingBreakdown ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+          </div>
+          <p className="text-3xl font-bold text-red-600 mt-2">{formatCurrency(totalOutstanding)}</p>
+
+          {showOutstandingBreakdown && (
+            <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Rent Owed</span>
+                <span className="font-medium text-red-600">{formatCurrency(totalRentOwed)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Late Fees</span>
+                <span className="font-medium text-red-600">{formatCurrency(totalLateFeesOwed)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Eviction Fees</span>
+                <span className="font-medium text-red-600">{formatCurrency(totalEvictionFeesOwed)}</span>
+              </div>
+              {totalOtherFeesOwed > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">Other Fees</span>
+                  <span className="font-medium text-red-600">{formatCurrency(totalOtherFeesOwed)}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+          <h3 className="text-sm font-medium text-gray-500">Total Collected</h3>
+          <p className="text-3xl font-bold text-emerald-600 mt-2">{formatCurrency(totalCollected)}</p>
+        </div>
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+          <h3 className="text-sm font-medium text-gray-500">Net Cash Flow</h3>
+          <p className={`text-3xl font-bold mt-2 ${netCashFlow >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(netCashFlow)}</p>
+        </div>
+      </div>
+
+      {/* Chart */}
+      {chartData.length > 0 && (
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-80">
+          <h3 className="text-lg font-semibold mb-4">Financial Overview <span className="text-sm font-normal text-gray-400 ml-2">(Click a bar for details)</span></h3>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
+              <XAxis dataKey="name" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
+              <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value}`} />
+              <Tooltip
+                cursor={{ fill: '#f3f4f6' }}
+                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+              />
+              <Bar dataKey="collected" name="Collected" fill="#10b981" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="owed" name="Total Owed" fill="#ef4444" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="expenses" name="Expenses" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Months List */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-900">Monthly Records</h3>
+        </div>
+        <div className="divide-y divide-gray-100">
+          {stats.length === 0 ? (
+            <div className="p-8 text-center text-gray-500">No records found. Create a new month to get started.</div>
+          ) : (
+            stats.map((record) => (
+              <div key={record.id} className="p-4 sm:px-6 hover:bg-gray-50 transition flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center space-x-4 w-full sm:w-auto">
+                  <div className={`p-2 rounded-full ${record.stats.isPaidOff ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                    {record.stats.isPaidOff ? <CheckCircle size={24} /> : <AlertCircle size={24} />}
+                  </div>
+                  <div>
+                    <h4 className="text-lg font-semibold text-gray-900">{MONTH_NAMES[record.month - 1]} {record.year}</h4>
+                    <p className="text-sm text-gray-500">Due: {record.dueDate}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between w-full sm:w-auto gap-8">
+                  <div className="text-right">
+                    <p className="text-sm text-gray-500">Balance</p>
+                    <p className={`font-bold ${record.stats.remainingBalance > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      {formatCurrency(record.stats.remainingBalance)}
+                    </p>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Link
+                      to={`/month/${record.id}`}
+                      className="text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition"
+                    >
+                      <ChevronRight size={20} />
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Add Month Modal */}
+      <Modal isOpen={isAddModalOpen} onClose={() => setAddModalOpen(false)} title="Start New Month">
+        <form onSubmit={handleAddMonth} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Year</label>
+              <input type="number" value={year} onChange={e => setYear(parseInt(e.target.value))} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Month</label>
+              <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2">
+                {MONTH_NAMES.map((m, i) => (
+                  <option key={i} value={i + 1}>{m}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Monthly Rent ($)</label>
+            <input type="number" value={rent} onChange={e => setRent(parseFloat(e.target.value))} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Due Date</label>
+            <input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)} required className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2" />
+          </div>
+          <div className="pt-2">
+            <button type="submit" className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 font-medium">Create Month Record</button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Import CSV Modal */}
+      <Modal isOpen={isImportModalOpen} onClose={() => { setImportModalOpen(false); setImportError(''); setImportResult(null); }} title="Import Data">
+        {importResult ? (
+          <div className="space-y-4">
+            <div className={`p-4 rounded-lg border ${importResult.rowsImported > 0 ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
+              <h3 className="font-semibold text-gray-900">Import Complete</h3>
+              <p className="text-sm text-gray-600">Processed {importResult.rowsProcessed} rows. Imported {importResult.rowsImported} items.</p>
+            </div>
+
+            <div className="max-h-64 overflow-y-auto space-y-2 border rounded-lg p-2 bg-gray-50">
+              {importResult.logs.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-2">No logs generated.</p>
+              ) : (
+                importResult.logs.map((log, i) => (
+                  <div key={i} className={`text-xs p-2 rounded border ${log.type === 'error' ? 'bg-red-50 border-red-100 text-red-700' :
+                    log.type === 'warning' ? 'bg-yellow-50 border-yellow-100 text-yellow-700' :
+                      'bg-white border-gray-200 text-gray-600'
+                    }`}>
+                    <span className="font-semibold uppercase mr-2">{log.type}</span>
+                    {log.row && <span className="text-gray-400 mr-2">Row {log.row}:</span>}
+                    {log.message}
+                  </div>
+                ))
+              )}
+            </div>
+
+            <button onClick={() => { setImportModalOpen(false); setImportResult(null); }} className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
+              Done
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Upload a CSV file to import rent, payments, fees, and adjustments. The file must have the following headers exactly:
+            </p>
+            <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 text-sm overflow-x-auto">
+              <table className="min-w-full">
+                <thead>
+                  <tr className="text-left text-gray-500">
+                    <th className="font-mono font-medium pb-2 pr-4">Date</th>
+                    <th className="font-mono font-medium pb-2 pr-4">Category</th>
+                    <th className="font-mono font-medium pb-2 pr-4">Description</th>
+                    <th className="font-mono font-medium pb-2 pr-4">Charge</th>
+                    <th className="font-mono font-medium pb-2 pr-4">Payment</th>
+                    <th className="font-mono font-medium pb-2">Balance</th>
+                  </tr>
+                </thead>
+                <tbody className="text-gray-700">
+                  <tr>
+                    <td className="pr-4">YYYY-MM-DD</td>
+                    <td className="pr-4">Rent | Payment | Fee | Adjustment</td>
+                    <td className="pr-4">Optional text</td>
+                    <td className="pr-4">Number</td>
+                    <td className="pr-4">Number</td>
+                    <td>(Ignored)</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div className="text-xs text-gray-500">
+              <p><strong>Rent:</strong> Looks at the Charge column to set the monthly rent.</p>
+              <p><strong>Payment:</strong> Looks at the Payment column to record a payment.</p>
+              <p><strong>Fee/Adjustment:</strong> Looks at Charge or Payment columns to add line items.</p>
+            </div>
+
+            {importError && (
+              <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm border border-red-100">
+                {importError}
+              </div>
+            )}
+
+            <div className="pt-4">
+              <label className="block w-full text-center bg-white border-2 border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50 cursor-pointer p-6 rounded-xl transition">
+                <Upload className="mx-auto text-gray-400 mb-2" size={24} />
+                <span className="text-sm font-medium text-gray-600">Click to select CSV file</span>
+                <input
+                  type="file"
+                  accept=".csv"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                  ref={fileInputRef}
+                />
+              </label>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+};
