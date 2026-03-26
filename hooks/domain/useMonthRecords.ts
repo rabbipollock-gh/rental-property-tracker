@@ -98,6 +98,47 @@ export const useMonthRecords = (
 
     const getMonth = (id: string) => records.find(r => r.id === id);
 
+    const ensureMonthRecord = (currentRecords: MonthRecord[], dateStr: string, defaultRent: number): { records: MonthRecord[], monthId: string } => {
+        const d = new Date(dateStr);
+        // Handle timezone parsing safely
+        const year = parseInt(dateStr.substring(0, 4));
+        const month = parseInt(dateStr.substring(5, 7));
+        const monthId = `${year}-${String(month).padStart(2, '0')}`;
+        
+        if (currentRecords.find(r => r.id === monthId)) {
+            return { records: currentRecords, monthId };
+        }
+        
+        const newRecord: MonthRecord = {
+            id: monthId, year, month,
+            monthlyRent: defaultRent,
+            dueDate: `${monthId}-01`,
+            payments: [], manualFees: [], adjustments: [], expenses: [], notices: []
+        };
+        const updatedRecords = [...currentRecords, newRecord].sort((a, b) => b.id.localeCompare(a.id));
+        return { records: updatedRecords, monthId };
+    };
+
+    const addGlobalPayment = (payment: Omit<Payment, 'id'>, defaultRent: number) => {
+        const { records: updated, monthId } = ensureMonthRecord(records, payment.date, defaultRent);
+        setRecords(updated.map(r => r.id === monthId ? { ...r, payments: [...r.payments, { ...payment, id: generateId() }] } : r));
+    };
+
+    const addGlobalFee = (fee: Omit<Fee, 'id'>, defaultRent: number) => {
+        const { records: updated, monthId } = ensureMonthRecord(records, fee.date, defaultRent);
+        setRecords(updated.map(r => r.id === monthId ? { ...r, manualFees: [...r.manualFees, { ...fee, id: generateId() }] } : r));
+    };
+
+    const addGlobalAdjustment = (adj: Omit<Adjustment, 'id'>, defaultRent: number) => {
+        const { records: updated, monthId } = ensureMonthRecord(records, adj.date, defaultRent);
+        setRecords(updated.map(r => r.id === monthId ? { ...r, adjustments: [...r.adjustments, { ...adj, id: generateId() }] } : r));
+    };
+
+    const addGlobalExpense = (expense: Omit<Expense, 'id'>, defaultRent: number) => {
+        const { records: updated, monthId } = ensureMonthRecord(records, expense.date, defaultRent);
+        setRecords(updated.map(r => r.id === monthId ? { ...r, expenses: [...r.expenses, { ...expense, id: generateId() }] } : r));
+    };
+
     return {
         records,
         addMonth,
@@ -119,6 +160,10 @@ export const useMonthRecords = (
         addNotice,
         editNotice,
         deleteNotice,
-        getMonth
+        getMonth,
+        addGlobalPayment,
+        addGlobalFee,
+        addGlobalAdjustment,
+        addGlobalExpense
     };
 };

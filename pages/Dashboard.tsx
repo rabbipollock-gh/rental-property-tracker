@@ -224,46 +224,43 @@ export const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {/* Months List */}
+      {/* Recent Activity Feed */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-900">Monthly Records</h3>
+        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+          <h3 className="text-lg font-semibold text-gray-900">Recent Activity</h3>
+          <Link to="/transactions" className="text-sm text-blue-600 hover:text-blue-800 font-medium">View All &rarr;</Link>
         </div>
         <div className="divide-y divide-gray-100">
-          {stats.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">No records found. Create a new month to get started.</div>
-          ) : (
-            stats.map((record) => (
-              <div key={record.id} className="p-4 sm:px-6 hover:bg-gray-50 transition flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center space-x-4 w-full sm:w-auto">
-                  <div className={`p-2 rounded-full ${record.stats.isPaidOff ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                    {record.stats.isPaidOff ? <CheckCircle size={24} /> : <AlertCircle size={24} />}
+          {(() => {
+            const allTransactions = data.records.flatMap(r => [
+              ...r.payments.map(p => ({ ...p, type: 'Rent Payment', amount: p.amount, isIncome: true })),
+              ...r.manualFees.map(f => ({ ...f, type: 'Manual Fee', amount: -f.amount, isIncome: false })),
+              ...r.adjustments.map(a => ({ ...a, type: `Adjustment (${a.reason})`, amount: a.amount, isIncome: a.amount >= 0 })),
+              ...(r.expenses || []).map(e => ({ ...e, type: `Expense - ${e.category}`, amount: -e.amount, isIncome: false }))
+            ]).concat((data.propertyExpenses || []).map(e => ({ ...e, type: `Prop Expense - ${e.category}`, amount: -e.amount, isIncome: false })))
+              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+            if (allTransactions.length === 0) {
+              return <div className="p-8 text-center text-gray-500">No recent transactions.</div>;
+            }
+
+            return allTransactions.slice(0, 10).map((t, idx) => (
+              <div key={idx} className="p-4 sm:px-6 hover:bg-gray-50 transition flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  <div className={`p-2 rounded-full ${t.isIncome ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                    {t.isIncome ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
                   </div>
                   <div>
-                    <h4 className="text-lg font-semibold text-gray-900">{MONTH_NAMES[record.month - 1]} {record.year}</h4>
-                    <p className="text-sm text-gray-500">Due: {record.dueDate}</p>
+                    <h4 className="text-sm font-semibold text-gray-900">{t.type}</h4>
+                    <p className="text-xs text-gray-500">{t.date}</p>
                   </div>
                 </div>
-
-                <div className="flex items-center justify-between w-full sm:w-auto gap-8">
-                  <div className="text-right">
-                    <p className="text-sm text-gray-500">Balance</p>
-                    <p className={`font-bold ${record.stats.remainingBalance > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                      {formatCurrency(record.stats.remainingBalance)}
-                    </p>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Link
-                      to={`/month/${record.id}`}
-                      className="text-blue-600 hover:bg-blue-50 p-2 rounded-lg transition"
-                    >
-                      <ChevronRight size={20} />
-                    </Link>
-                  </div>
+                <div className={`font-bold ${t.isIncome ? 'text-green-600' : 'text-gray-900'}`}>
+                  {t.isIncome ? '+' : ''}{formatCurrency(Math.abs(t.amount))}
                 </div>
               </div>
-            ))
-          )}
+            ));
+          })()}
         </div>
       </div>
 
