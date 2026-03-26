@@ -10,7 +10,7 @@ import * as Papa from 'papaparse';
 import { ImportResult } from '../types';
 
 export const Dashboard: React.FC = () => {
-  const { data, addMonth, importData, setEditTarget } = useStore();
+  const { data, leases, properties, tenants, addMonth, importData, setEditTarget } = useStore();
   const navigate = useNavigate();
   const [isAddModalOpen, setAddModalOpen] = useState(false);
   const [isImportModalOpen, setImportModalOpen] = useState(false);
@@ -18,6 +18,7 @@ export const Dashboard: React.FC = () => {
   const [importError, setImportError] = useState('');
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [chartRange, setChartRange] = useState<'6m' | '12m' | 'ytd' | 'all'>('6m');
+  const [selectedPropertyFilterId, setSelectedPropertyFilterId] = useState<string>('all');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const latestRecord = data.records.length > 0 ? data.records[0] : null;
@@ -32,6 +33,9 @@ export const Dashboard: React.FC = () => {
     return latestRecord.month === 12 ? latestRecord.year + 1 : latestRecord.year;
   };
 
+  let activeLeases = leases?.filter(l => l.isActive) || [];
+  
+  const [selectedLeaseId, setSelectedLeaseId] = useState<string>('');
   const [year, setYear] = useState(getNextYear());
   const [month, setMonth] = useState(getNextMonth());
   const [rent, setRent] = useState(latestRecord?.monthlyRent || 1500);
@@ -47,15 +51,21 @@ export const Dashboard: React.FC = () => {
       const nextMonth = getNextMonth();
       setYear(nextYear);
       setMonth(nextMonth);
-      setRent(latestRecord?.monthlyRent || 1500);
       setDueDate(`${nextYear}-${String(nextMonth).padStart(2, '0')}-01`);
+      
+      if (activeLeases.length > 0) {
+          setSelectedLeaseId(activeLeases[0].id);
+          setRent(activeLeases[0].monthlyRent);
+      } else {
+          setRent(latestRecord?.monthlyRent || 1500);
+      }
     }
-  }, [isAddModalOpen, latestRecord]);
+  }, [isAddModalOpen, latestRecord, activeLeases.length]);
 
   const handleAddMonth = (e: React.FormEvent) => {
     e.preventDefault();
     if (!dueDate) return;
-    addMonth(year, month, rent, dueDate);
+    addMonth(year, month, rent, dueDate, selectedLeaseId || undefined);
     setAddModalOpen(false);
   };
 
@@ -80,7 +90,22 @@ export const Dashboard: React.FC = () => {
     });
   };
 
-  const stats = useMemo(() => data.records.map(r => ({ ...r, stats: calculateMonthStats(r) })), [data.records]);
+  const filteredRecords = useMemo(() => {
+     if (selectedPropertyFilterId === 'all') return data.records;
+     return data.records.filter(r => {
+         if (!r.leaseId) return false;
+         const lease = leases?.find(l => l.id === r.leaseId);
+         return lease?.propertyId === selectedPropertyFilterId;
+     });
+  }, [data.records, leases, selectedPropertyFilterId]);
+
+  const filteredPropertyExpenses = useMemo(() => {
+     const exps = data.propertyExpenses || [];
+     if (selectedPropertyFilterId === 'all') return exps;
+     return exps.filter(e => e.propertyId === selectedPropertyFilterId);
+  }, [data.propertyExpenses, selectedPropertyFilterId]);
+
+  const stats = useMemo(() => filteredRecords.map(r => ({ ...r, stats: calculateMonthStats(r) })), [filteredRecords]);
 
   const totalOutstanding = stats.reduce((sum, r) => sum + r.stats.remainingBalance, 0);
   const totalRentOwed = stats.reduce((sum, r) => sum + r.stats.rentOwed, 0);
@@ -89,12 +114,12 @@ export const Dashboard: React.FC = () => {
   const totalOtherFeesOwed = stats.reduce((sum, r) => sum + r.stats.otherFeesOwed, 0);
 
   const totalCollected = stats.reduce((sum, r) => sum + r.stats.totalPayments, 0);
-  const totalTenantExpenses = data.records.reduce((sum, r) => sum + (r.expenses || []).reduce((s, e) => s + e.amount, 0), 0);
-  const totalPropertyExpenses = (data.propertyExpenses || []).reduce((sum, e) => sum + e.amount, 0);
+  const totalTenantExpenses = filteredRecords.reduce((sum, r) => sum + (r.expenses || []).reduce((s, e) => s + e.amount, 0), 0);
+  const totalPropertyExpenses = filteredPropertyExpenses.reduce((sum, e) => sum + e.amount, 0);
   const netCashFlow = totalCollected - totalTenantExpenses - totalPropertyExpenses;
 
   const globalExpensesByMonth: Record<string, number> = {};
-  (data.propertyExpenses || []).forEach(e => {
+  filteredPropertyExpenses.forEach(e => {
      if (e.date) {
         const monthKey = e.date.substring(0, 7);
         globalExpensesByMonth[monthKey] = (globalExpensesByMonth[monthKey] || 0) + e.amount;
@@ -132,14 +157,14 @@ export const Dashboard: React.FC = () => {
   };
 
   const allTransactions = useMemo(() => {
-    return data.records.flatMap(r => [
+    return filteredRecords.flatMap(r => [
       ...r.payments.map(p => ({ ...p, type: 'Rent Payment', amount: p.amount, isIncome: true, monthId: r.id, originalType: 'payment', item: p })),
       ...r.manualFees.map(f => ({ ...f, type: 'Manual Fee', amount: -f.amount, isIncome: false, monthId: r.id, originalType: 'fee', item: f })),
       ...r.adjustments.map(a => ({ ...a, type: `Adjustment (${a.reason})`, amount: a.amount, isIncome: a.amount >= 0, monthId: r.id, originalType: 'adjustment', item: a })),
-      ...(r.expenses || []).map(e => ({ ...e, type: `Tenant Exp - ${e.category}`, amount: -e.amount, isIncome: false, monthId: r.id, originalType: 'expense', item: e }))
-    ]).concat((data.propertyExpenses || []).map(e => ({ ...e, type: `Global Exp - ${e.category}`, amount: -e.amount, isIncome: false, monthId: '', originalType: 'expense', item: e })))
+      ...(r.expenses || []).map(e => ({ ...e, type: `Billable Exp - ${e.category}`, amount: -e.amount, isIncome: false, monthId: r.id, originalType: 'expense', item: e }))
+    ]).concat(filteredPropertyExpenses.map(e => ({ ...e, type: `Property Exp - ${e.category}`, amount: -e.amount, isIncome: false, monthId: '', originalType: 'expense', item: e })))
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [data.records, data.propertyExpenses]);
+  }, [filteredRecords, filteredPropertyExpenses]);
 
   return (
     <div className="space-y-8">
@@ -149,13 +174,25 @@ export const Dashboard: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-gray-500">Overview of your rental property performance.</p>
         </div>
-        <div className="flex items-center space-x-2">
-          <button onClick={() => setImportModalOpen(true)} className="flex items-center space-x-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg transition shadow-sm">
-            <Upload size={18} /><span>Import CSV</span>
-          </button>
-          <button onClick={() => setAddModalOpen(true)} className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition shadow-sm">
-            <Plus size={18} /><span>New Month</span>
-          </button>
+        <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
+          {properties && properties.length > 0 && (
+              <select 
+                  value={selectedPropertyFilterId} 
+                  onChange={e => setSelectedPropertyFilterId(e.target.value)}
+                  className="w-full sm:w-auto bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2"
+              >
+                  <option value="all">Entire Portfolio</option>
+                  {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+          )}
+          <div className="flex items-center space-x-2 w-full sm:w-auto">
+              <button onClick={() => setImportModalOpen(true)} className="flex-1 sm:flex-none flex items-center justify-center space-x-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg transition shadow-sm">
+                <Upload size={18} /><span>Import CSV</span>
+              </button>
+              <button onClick={() => setAddModalOpen(true)} className="flex-1 sm:flex-none flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition shadow-sm">
+                <Plus size={18} /><span>New Month</span>
+              </button>
+          </div>
         </div>
       </div>
 
@@ -261,7 +298,7 @@ export const Dashboard: React.FC = () => {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">Month</label>
-              <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2">
+              <select value={month} onChange={e => setMonth(parseInt(e.target.value))} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2 bg-white">
                 {MONTH_NAMES.map((m, i) => (
                   <option key={i} value={i + 1}>{m}</option>
                 ))}
@@ -269,8 +306,30 @@ export const Dashboard: React.FC = () => {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700">Monthly Rent ($)</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Active Lease Contract</label>
+            <select 
+                value={selectedLeaseId} 
+                onChange={e => {
+                    const lId = e.target.value;
+                    setSelectedLeaseId(lId);
+                    const lease = activeLeases.find((l:any) => l.id === lId);
+                    if (lease) setRent(lease.monthlyRent);
+                }} 
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2 bg-white"
+            >
+                <option value="">No Active Lease / Manual</option>
+                {activeLeases.map((l:any) => {
+                    const prop = properties?.find((p:any) => p.id === l.propertyId);
+                    const ten = tenants?.find((t:any) => t.id === l.tenantId);
+                    return <option key={l.id} value={l.id}>{prop?.name} ({ten?.name}) - ${l.monthlyRent}</option>;
+                })}
+            </select>
+            {selectedLeaseId && <p className="text-xs text-blue-600 mt-1">Base rent synchronized to contract.</p>}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700">Override Base Rent ($)</label>
             <input type="number" value={rent} onChange={e => setRent(parseFloat(e.target.value))} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm border p-2" />
+            <p className="text-xs text-gray-500 mt-1">Leave as default unless calculating pro-rated move-in/out.</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700">Due Date</label>

@@ -6,25 +6,41 @@ import { CheckCircle, AlertCircle, ChevronRight, ArrowRightLeft, Calendar, Searc
 import { Link } from 'react-router-dom';
 
 export const Transactions: React.FC = () => {
-    const { data, setEditTarget } = useStore();
+    const { data, leases, properties, setEditTarget } = useStore();
     const [activeTab, setActiveTab] = useState<'ledger' | 'months'>('ledger');
     const [searchTerm, setSearchTerm] = useState('');
     const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
+    const [selectedPropertyFilterId, setSelectedPropertyFilterId] = useState<string>('all');
 
-    const stats = useMemo(() => data.records.map(r => ({
+    const filteredRecords = useMemo(() => {
+        if (selectedPropertyFilterId === 'all') return data.records;
+        return data.records.filter(r => {
+            if (!r.leaseId) return false;
+            const lease = leases?.find(l => l.id === r.leaseId);
+            return lease?.propertyId === selectedPropertyFilterId;
+        });
+    }, [data.records, leases, selectedPropertyFilterId]);
+
+    const filteredPropertyExpenses = useMemo(() => {
+        const exps = data.propertyExpenses || [];
+        if (selectedPropertyFilterId === 'all') return exps;
+        return exps.filter(e => e.propertyId === selectedPropertyFilterId);
+    }, [data.propertyExpenses, selectedPropertyFilterId]);
+
+    const stats = useMemo(() => filteredRecords.map(r => ({
         ...r,
         stats: calculateMonthStats(r)
-    })), [data.records]);
+    })), [filteredRecords]);
 
     const allTransactions = useMemo(() => {
-        return data.records.flatMap(r => [
+        return filteredRecords.flatMap(r => [
             ...r.payments.map(p => ({ ...p, type: 'Rent Payment', amount: p.amount, isIncome: true, monthId: r.id, originalType: 'payment', item: p })),
             ...r.manualFees.map(f => ({ ...f, type: 'Manual Fee', amount: -f.amount, isIncome: false, monthId: r.id, originalType: 'fee', item: f })),
             ...r.adjustments.map(a => ({ ...a, type: `Adjustment (${a.reason})`, amount: a.amount, isIncome: a.amount >= 0, monthId: r.id, originalType: 'adjustment', item: a })),
-            ...(r.expenses || []).map(e => ({ ...e, type: `Tenant Exp - ${e.category}`, amount: -e.amount, isIncome: false, monthId: r.id, originalType: 'expense', item: e }))
-        ]).concat((data.propertyExpenses || []).map(e => ({ ...e, type: `Global Exp - ${e.category}`, amount: -e.amount, isIncome: false, monthId: '', originalType: 'expense', item: e })))
+            ...(r.expenses || []).map(e => ({ ...e, type: `Billable Exp - ${e.category}`, amount: -e.amount, isIncome: false, monthId: r.id, originalType: 'expense', item: e }))
+        ]).concat(filteredPropertyExpenses.map(e => ({ ...e, type: `Property Exp - ${e.category}`, amount: -e.amount, isIncome: false, monthId: '', originalType: 'expense', item: e })))
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    }, [data.records, data.propertyExpenses]);
+    }, [filteredRecords, filteredPropertyExpenses]);
 
     const filteredTransactions = useMemo(() => {
         return allTransactions.filter(t => {
@@ -43,7 +59,19 @@ export const Transactions: React.FC = () => {
     return (
         <div className="max-w-6xl mx-auto space-y-6">
             <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-                <h1 className="text-2xl font-bold text-gray-900">Transactions</h1>
+                <div className="flex items-center gap-4">
+                    <h1 className="text-2xl font-bold text-gray-900">Transactions</h1>
+                    {properties && properties.length > 0 && (
+                        <select 
+                            value={selectedPropertyFilterId} 
+                            onChange={e => setSelectedPropertyFilterId(e.target.value)}
+                            className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2"
+                        >
+                            <option value="all">Entire Portfolio</option>
+                            {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                    )}
+                </div>
                 <div className="flex bg-gray-100 p-1 rounded-lg self-start md:self-auto">
                     <button onClick={() => setActiveTab('ledger')} className={`flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium transition ${activeTab === 'ledger' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>
                         <ArrowRightLeft size={16} /><span>Master Ledger</span>

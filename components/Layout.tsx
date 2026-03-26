@@ -77,17 +77,18 @@ export const Layout: React.FC = () => {
             active={location.pathname === '/'} 
           />
           <NavItem 
-            to="/properties" 
-            icon={Building2} 
-            label="Properties & Leases" 
-            active={location.pathname === '/properties'} 
-          />
-          <NavItem 
             to="/transactions" 
             icon={ArrowRightLeft} 
             label="Transactions" 
             active={location.pathname === '/transactions'} 
           />
+          <NavItem 
+            to="/reports" 
+            icon={FileText} 
+            label="Reports" 
+            active={location.pathname === '/reports'} 
+          />
+          <div className="my-2 border-t border-gray-100 hidden md:block"></div>
           <NavItem 
              to="/documents" 
              icon={FolderOpen} 
@@ -95,10 +96,10 @@ export const Layout: React.FC = () => {
              active={location.pathname === '/documents'} 
            />
           <NavItem 
-            to="/reports" 
-            icon={FileText} 
-            label="Reports" 
-            active={location.pathname === '/reports'} 
+            to="/properties" 
+            icon={Building2} 
+            label="Properties & Leases" 
+            active={location.pathname === '/properties'} 
           />
           <div className="pt-4 pb-2 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">
             Management
@@ -157,7 +158,7 @@ export const Layout: React.FC = () => {
                      <DollarSign size={18} /><span>Record Income</span>
                  </button>
                  <button onClick={() => { setModalType('expense'); setIsFabOpen(false); }} className="flex items-center space-x-3 w-full p-3 hover:bg-orange-50 rounded-lg text-left text-orange-700 font-medium transition">
-                     <Receipt size={18} /><span>Log Expense</span>
+                     <Receipt size={18} /><span>Log Property Exp</span>
                  </button>
                  <button onClick={() => { setModalType('fee'); setIsFabOpen(false); }} className="flex items-center space-x-3 w-full p-3 hover:bg-red-50 rounded-lg text-left text-red-700 font-medium transition">
                      <MinusCircle size={18} /><span>Add Custom Fee</span>
@@ -220,7 +221,7 @@ export const Layout: React.FC = () => {
           onSave={handleExpenseSubmit}
           initialData={null}
           categories={data.settings.expenseCategories}
-          title="Log Global Expense"
+          title="Log Property Expense (Non-Billable)"
           showRecurringOption={true}
       />
       

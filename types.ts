@@ -36,7 +36,8 @@ export interface Expense {
   receiptUrl?: string;
   isRecurring?: boolean;
   recurringInterval?: 'monthly' | 'yearly';
-  propertyId?: string; // For future phase 2 Support
+  propertyId?: string; // Phase 8: Links expense to a specific property (if global)
+  unitId?: string; // Phase 8: Links to a specific unit (e.g. Duplex side A)
   isSplit?: boolean;
   splits?: ExpenseSplit[];
 }
@@ -51,6 +52,7 @@ export interface Notice {
 
 export interface MonthRecord {
   id: string; // Format: "YYYY-MM"
+  leaseId?: string; // Phase 8: The active lease generating this baseline rent
   year: number;
   month: number; // 1-12
   monthlyRent: number;
@@ -98,8 +100,56 @@ export interface ImportResult {
   rowsImported: number;
 }
 
+export interface Unit {
+  id: string;
+  name: string; // e.g. "Apt 1", "Unit B", "Main House"
+}
+
+export interface Property {
+  id: string;
+  name: string; // e.g. "Main Street Duplex"
+  address: string;
+  units: Unit[];
+}
+
+export interface Tenant {
+  id: string;
+  name: string;
+  email: string;
+  coTenantName?: string;
+  coTenantEmail?: string;
+  phone?: string;
+}
+
+export interface Lease {
+  id: string;
+  propertyId: string;
+  unitId?: string;
+  tenantId: string;
+  monthlyRent: number;
+  securityDeposit: number;
+  startDate: string;
+  endDate: string;
+  isActive: boolean;
+}
+
+export interface DocumentItem {
+  id: string;
+  name: string;
+  type: 'Lease' | 'Receipt' | 'Tax' | 'Other';
+  url: string;
+  dateAdded: string;
+  propertyId?: string;
+  tenantId?: string;
+  monthId?: string;
+}
+
 export interface AppData {
   settings: PropertySettings;
+  properties?: Property[];
+  tenants?: Tenant[];
+  leases?: Lease[];
+  documents?: DocumentItem[];
   records: MonthRecord[];
   propertyExpenses: Expense[];
 }

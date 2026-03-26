@@ -46,8 +46,9 @@ export const Statement: React.FC = () => {
     setShowEmailModal(true);
   };
 
-  const handleSendEmail = async (toEmails: string, ccMyself: boolean, customMessage: string) => {
-    const names = [settings.tenantName, settings.tenantName2].filter(Boolean).join(' and ');
+  const emailDefaultMessage = `Hi ${[settings.tenantName, settings.tenantName2].filter(Boolean).join(' and ')},\n\nPlease find your rent statement for ${MONTH_NAMES[record.month - 1]} ${record.year} attached.\n\nThank you,\n${settings.landlordName}`;
+
+  const handleSendEmail = async (toEmails: string, ccMyself: boolean, finalMessage: string) => {
     
     // Add landlord email if CC selected
     let finalRecipients = toEmails;
@@ -55,14 +56,11 @@ export const Statement: React.FC = () => {
         finalRecipients += `, ${settings.landlordEmail}`;
     }
 
-    const defaultBody = `Hi ${names},\n\nPlease find your rent statement for ${MONTH_NAMES[record.month - 1]} ${record.year} attached.\n\nThank you,\n${settings.landlordName}`;
-    const formattedBody = customMessage ? `${customMessage}\n\n---\n${defaultBody}` : defaultBody;
-
     if (pdfBase64) {
       await sendEmailWithPDF(
           `statement-${MONTH_NAMES[record.month - 1]}-${record.year}.pdf`,
           `Rent Statement: ${MONTH_NAMES[record.month - 1]} ${record.year}`,
-          formattedBody,
+          finalMessage,
           pdfBase64,
           finalRecipients,
           settings.landlordEmail,
@@ -114,6 +112,7 @@ export const Statement: React.FC = () => {
            updateSettings({ ...settings, savedContacts: current.filter(c => c !== contact) });
          }}
          pdfBase64={pdfBase64}
+         defaultMessage={emailDefaultMessage}
        />
 
        {/* Statement Sheet - A4 styling approximation */}

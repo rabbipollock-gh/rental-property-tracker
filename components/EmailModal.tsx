@@ -11,6 +11,7 @@ interface EmailModalProps {
   onSaveContacts?: (contacts: string[]) => void;
   onDeleteContact?: (contact: string) => void;
   pdfBase64?: string | null;
+  defaultMessage?: string;
 }
 
 export const EmailModal: React.FC<EmailModalProps> = ({
@@ -22,19 +23,20 @@ export const EmailModal: React.FC<EmailModalProps> = ({
   savedContacts = [],
   onSaveContacts,
   onDeleteContact,
-  pdfBase64
+  pdfBase64,
+  defaultMessage = ''
 }) => {
   const [emails, setEmails] = useState(defaultTo);
   const [ccMyself, setCcMyself] = useState(false);
-  const [customMessage, setCustomMessage] = useState('');
+  const [customMessage, setCustomMessage] = useState(defaultMessage);
 
   useEffect(() => {
     if (isOpen) {
       setEmails(defaultTo);
       setCcMyself(false);
-      setCustomMessage('');
+      setCustomMessage(defaultMessage);
     }
-  }, [isOpen, defaultTo]);
+  }, [isOpen, defaultTo, defaultMessage]);
 
   const handleSend = () => {
     const inputEmails = emails.split(',').map(e => e.trim()).filter(Boolean);
@@ -139,13 +141,13 @@ export const EmailModal: React.FC<EmailModalProps> = ({
 
             <div className="pt-2">
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                Custom Message (Optional)
+                Email Message
               </label>
               <textarea
                 value={customMessage}
                 onChange={(e) => setCustomMessage(e.target.value)}
-                className="w-full border-gray-300 rounded-lg shadow-sm border p-2.5 focus:ring-blue-500 focus:border-blue-500 transition-colors resize-none h-24 text-sm"
-                placeholder="Add a personalized note to the email body..."
+                className="w-full border-gray-300 rounded-lg shadow-sm border p-2.5 focus:ring-blue-500 focus:border-blue-500 transition-colors resize-y min-h-[160px] text-sm"
+                placeholder="Type your message here..."
               />
             </div>
           </div>

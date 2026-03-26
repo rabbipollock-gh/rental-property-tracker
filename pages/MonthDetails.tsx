@@ -396,7 +396,7 @@ export const MonthDetails: React.FC = () => {
             {/* Expenses */}
             <div className="space-y-4">
                 <div className="flex justify-between items-center">
-                    <h2 className="text-lg font-bold text-gray-900">Tenant Expenses (Paid by Landlord)</h2>
+                    <h2 className="text-lg font-bold text-gray-900">Billable Expenses</h2>
                     <button onClick={() => { resetForms(); setModalType('expense'); }} className="text-sm bg-purple-600 text-white px-3 py-1.5 rounded-lg hover:bg-purple-700 flex items-center space-x-1">
                         <Plus size={14} /> <span>Add Expense</span>
                     </button>
@@ -415,7 +415,7 @@ export const MonthDetails: React.FC = () => {
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-200">
                             {record.expenses?.length === 0 || !record.expenses ? (
-                                <tr><td colSpan={6} className="px-4 py-4 text-center text-sm text-gray-500">No tenant expenses recorded</td></tr>
+                                <tr><td colSpan={6} className="px-4 py-4 text-center text-sm text-gray-500">No billable expenses recorded</td></tr>
                             ) : (
                                 record.expenses.map(expense => (
                                     <tr key={expense.id} className="hover:bg-gray-50 transition">
@@ -547,7 +547,7 @@ export const MonthDetails: React.FC = () => {
           onSave={handleSaveExpense}
           initialData={editExpenseData}
           categories={data.settings.expenseCategories}
-          title={editExpenseData ? "Edit Tenant Expense" : "Add Tenant Expense (Paid by Landlord)"}
+          title={editExpenseData ? "Edit Billable Expense" : "Add Billable Expense"}
           showRecurringOption={false}
       />
 
@@ -568,17 +568,18 @@ export const MonthDetails: React.FC = () => {
       <Modal isOpen={modalType === 'editRent'} onClose={() => setModalType(null)} title="Edit Monthly Rent">
          <form onSubmit={handleRentUpdate} className="space-y-3">
              <div>
-                <label className="text-xs text-gray-500">Rent Amount</label>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Override Base Rent ($)</label>
                 <input type="number" step="0.01" required value={editRentAmount} onChange={e => setEditRentAmount(parseFloat(e.target.value))} className="w-full border p-2 rounded" />
              </div>
              <div>
-                <label className="text-xs text-gray-500">Due Date</label>
+                <label className="text-sm font-medium text-gray-700 block mb-1">Due Date</label>
                 <input type="date" required value={editDueDate} onChange={e => setEditDueDate(e.target.value)} className="w-full border p-2 rounded" />
              </div>
-             <div className="bg-yellow-50 text-yellow-800 p-2 text-xs rounded">
-                Warning: Changing dates may affect calculated late fees.
+             <div className="bg-yellow-50 text-yellow-800 p-3 text-xs rounded border border-yellow-200">
+                <p className="font-semibold mb-1">Important Note:</p>
+                <p>Changing the rent amount here only overrides it for this specific month. To permanently change the rent, please update the Active Lease in Portfolio Settings.</p>
              </div>
-             <button type="submit" className="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700">Update Rent</button>
+             <button type="submit" className="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700 font-medium">Update Rent Record</button>
          </form>
       </Modal>
 

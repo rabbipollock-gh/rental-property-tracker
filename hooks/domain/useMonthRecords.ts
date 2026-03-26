@@ -6,7 +6,7 @@ export const useMonthRecords = (
     records: MonthRecord[],
     setRecords: (records: MonthRecord[]) => void
 ) => {
-    const addMonth = (year: number, month: number, rent: number, dueDate: string) => {
+    const addMonth = (year: number, month: number, rent: number, dueDate: string, leaseId?: string) => {
         const id = `${year}-${String(month).padStart(2, '0')}`;
         if (records.find(r => r.id === id)) {
             alert("Month already exists!");
@@ -14,6 +14,7 @@ export const useMonthRecords = (
         }
         const newRecord: MonthRecord = {
             id,
+            leaseId,
             year,
             month,
             monthlyRent: rent,
@@ -111,6 +112,7 @@ export const useMonthRecords = (
         
         const newRecord: MonthRecord = {
             id: monthId, year, month,
+            leaseId: currentRecords[currentRecords.length-1]?.leaseId, // Try inheriting the last known lease on fallback
             monthlyRent: defaultRent,
             dueDate: `${monthId}-01`,
             payments: [], manualFees: [], adjustments: [], expenses: [], notices: []

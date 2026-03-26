@@ -62,20 +62,19 @@ export const Reports: React.FC = () => {
     setShowEmailModal(true);
   };
 
-  const handleSendEmailReport = async (toEmails: string, ccMyself: boolean, customMessage: string) => {
+  const emailDefaultMessage = `Please find the attached report for ${activeReport.replace('-', ' ')}.`;
+
+  const handleSendEmailReport = async (toEmails: string, ccMyself: boolean, finalMessage: string) => {
     let finalRecipients = toEmails;
     if (ccMyself && data.settings.landlordEmail && !toEmails.includes(data.settings.landlordEmail)) {
         finalRecipients += `, ${data.settings.landlordEmail}`;
     }
 
-    const defaultBody = `Please find the attached report for ${activeReport.replace('-', ' ')}.`;
-    const formattedBody = customMessage ? `${customMessage}\n\n---\n${defaultBody}` : defaultBody;
-
     if (pdfBase64) {
       await sendEmailWithPDF(
           `${activeReport}-report.pdf`,
           `Rental Property Report: ${activeReport.replace('-', ' ')}`,
-          formattedBody,
+          finalMessage,
           pdfBase64,
           finalRecipients,
           data.settings.landlordEmail,
@@ -772,6 +771,7 @@ export const Reports: React.FC = () => {
           updateSettings({ ...data.settings, savedContacts: current.filter(c => c !== contact) });
         }}
         pdfBase64={pdfBase64}
+        defaultMessage={emailDefaultMessage}
       />
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">

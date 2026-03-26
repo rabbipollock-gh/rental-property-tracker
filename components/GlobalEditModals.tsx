@@ -151,7 +151,7 @@ export const GlobalEditModals: React.FC = () => {
                     onSave={handleSaveExpense}
                     initialData={editTarget.item as Expense}
                     categories={data.settings.expenseCategories}
-                    title="Edit Expense"
+                    title={mId ? "Edit Billable Expense" : "Edit Property Expense (Non-Billable)"}
                     showRecurringOption={!mId} // Only global expenses can be recurring currently
                 />
             )}
