@@ -68,6 +68,8 @@ export interface PropertySettings {
   landlordName: string;
   landlordAddress: string;
   landlordEmail: string;
+  gmailAppPassword?: string;
+  savedContacts?: string[];
   tenantName: string;
   tenantAddress: string;
   tenantEmail: string;

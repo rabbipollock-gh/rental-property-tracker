@@ -4,11 +4,12 @@ import { useStore } from '../hooks/useStore';
 import { calculateMonthStats, formatCurrency, formatDate } from '../utils/calculations';
 import { ArrowLeft, Printer, Mail } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
-import { generateAndSharePDF } from '../utils/sharePDF';
+import { generatePDFBase64, sendEmailWithPDF } from '../utils/sharePDF';
+import { EmailModal } from '../components/EmailModal';
 
 export const PaymentReceipt: React.FC = () => {
   const { monthId, paymentId } = useParams<{ monthId: string, paymentId: string }>();
-  const { data, getMonth } = useStore();
+  const { data, getMonth, updateSettings } = useStore();
   
   const record = getMonth(monthId || '');
   const payment = record?.payments.find(p => p.id === paymentId);
@@ -51,16 +52,37 @@ export const PaymentReceipt: React.FC = () => {
     html2pdf().set(opt).from(element).save();
   };
 
-  const handleEmail = () => {
-    const emails = [data.settings.tenantEmail, data.settings.tenantEmail2].filter(Boolean).join(',');
+  const [showEmailModal, setShowEmailModal] = React.useState(false);
+  const [pdfBase64, setPdfBase64] = React.useState<string | null>(null);
 
-    generateAndSharePDF(
-        'receipt-content',
-        `receipt_${payment.date}.pdf`,
-        `Payment Receipt - ${formatDate(payment.date)}`,
-        `Hello,\n\nPlease find attached your payment receipt for ${formatCurrency(payment.amount)} received on ${formatDate(payment.date)}.\n\nThank you,\n${data.settings.landlordName || 'Management'}`,
-        emails
-    );
+  const handleEmailClick = async () => {
+    const base64 = await generatePDFBase64('receipt-content', `receipt_${payment.date}.pdf`, 'portrait');
+    setPdfBase64(base64);
+    setShowEmailModal(true);
+  };
+
+  const handleSendEmail = async (toEmails: string, ccMyself: boolean, customMessage: string) => {
+    // Add landlord email if CC selected
+    let finalRecipients = toEmails;
+    if (ccMyself && data.settings.landlordEmail && !toEmails.includes(data.settings.landlordEmail)) {
+        finalRecipients += `, ${data.settings.landlordEmail}`;
+    }
+
+    const defaultBody = `Hello,\n\nPlease find attached your payment receipt for ${formatCurrency(payment.amount)} received on ${formatDate(payment.date)}.\n\nThank you,\n${data.settings.landlordName || 'Management'}`;
+    const formattedBody = customMessage ? `${customMessage}\n\n---\n${defaultBody}` : defaultBody;
+
+    if (pdfBase64) {
+      await sendEmailWithPDF(
+          `receipt_${payment.date}.pdf`,
+          `Payment Receipt - ${formatDate(payment.date)}`,
+          formattedBody,
+          pdfBase64,
+          finalRecipients,
+          data.settings.landlordEmail,
+          data.settings.gmailAppPassword || ''
+      );
+    }
+    setShowEmailModal(false);
   };
 
   return (
@@ -72,7 +94,7 @@ export const PaymentReceipt: React.FC = () => {
         </Link>
         <div className="flex space-x-3">
           <button 
-            onClick={handleEmail}
+            onClick={handleEmailClick}
             className="flex items-center space-x-2 px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition"
           >
             <Mail size={18} />
@@ -94,6 +116,24 @@ export const PaymentReceipt: React.FC = () => {
           </button>
         </div>
       </div>
+
+      <EmailModal
+        isOpen={showEmailModal}
+        onClose={() => {
+           setShowEmailModal(false);
+           setPdfBase64(null);
+        }}
+        onSend={handleSendEmail}
+        defaultTo={[data.settings.tenantEmail, data.settings.tenantEmail2].filter(Boolean).join(', ')}
+        landlordEmail={data.settings.landlordEmail}
+        savedContacts={data.settings.savedContacts || []}
+        onSaveContacts={(contacts) => updateSettings({ ...data.settings, savedContacts: contacts })}
+        onDeleteContact={(contact) => {
+          const current = data.settings.savedContacts || [];
+          updateSettings({ ...data.settings, savedContacts: current.filter(c => c !== contact) });
+        }}
+        pdfBase64={pdfBase64}
+      />
 
       {/* Receipt Document */}
       <div id="receipt-content" className="bg-white p-8 sm:p-12 rounded-xl shadow-sm border border-gray-200">

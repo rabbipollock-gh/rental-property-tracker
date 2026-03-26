@@ -2,15 +2,17 @@ import { supabase } from './supabaseClient';
 import { AppData } from '../types';
 
 const TABLE_NAME = 'rental_tracker_data';
-const USER_ID = 'default_user'; // In a real app, this would be the authenticated user's ID
 
 export const fetchAppData = async (): Promise<AppData | null> => {
     if (!supabase) return null;
 
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
     const { data, error } = await supabase
         .from(TABLE_NAME)
         .select('content')
-        .eq('user_id', USER_ID)
+        .eq('user_id', user.id)
         .single();
 
     if (error) {
@@ -28,9 +30,12 @@ export const fetchAppData = async (): Promise<AppData | null> => {
 export const saveAppData = async (data: AppData): Promise<boolean> => {
     if (!supabase) return false;
 
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+
     const { error } = await supabase
         .from(TABLE_NAME)
-        .upsert({ user_id: USER_ID, content: data, updated_at: new Date().toISOString() });
+        .upsert({ user_id: user.id, content: data, updated_at: new Date().toISOString() });
 
     if (error) {
         console.error('Supabase save error:', error);

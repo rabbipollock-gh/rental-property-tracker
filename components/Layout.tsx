@@ -65,11 +65,24 @@ export const Layout: React.FC = () => {
             label="Settings" 
             active={location.pathname === '/settings'} 
           />
+          <div className="pt-4 pb-2 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            Account
+          </div>
+          <button
+            onClick={async () => {
+              const { supabase } = await import('../services/supabaseClient');
+              await supabase?.auth.signOut();
+              window.location.reload();
+            }}
+            className="flex w-full items-center space-x-3 px-4 py-3 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
+          >
+            <span className="font-medium">Sign Out</span>
+          </button>
         </nav>
 
         <div className="p-4 border-t border-gray-200">
           <div className="text-xs text-gray-500 text-center">
-            &copy; 2024 Rental Tracker
+            &copy; 2026 Rental Tracker
           </div>
         </div>
       </aside>

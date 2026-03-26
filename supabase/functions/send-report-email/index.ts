@@ -37,7 +37,13 @@ async function sendViaGmailSMTP(
   }
 
   async function send(cmd: string): Promise<string> {
-    await conn.write(encoder.encode(cmd + "\r\n"));
+    const data = encoder.encode(cmd + "\r\n");
+    let written = 0;
+    while (written < data.length) {
+      const n = await conn.write(data.subarray(written));
+      if (n === null || n === 0) throw new Error("Failed to write to connection");
+      written += n;
+    }
     return await readLine();
   }
 

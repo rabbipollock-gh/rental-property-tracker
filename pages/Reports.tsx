@@ -3,7 +3,8 @@ import { useStore } from '../hooks/useStore';
 import { calculateMonthStats, formatCurrency } from '../utils/calculations';
 import { FileText, DollarSign, Scale, Calendar, Download, Mail } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
-import { generateAndSharePDF } from '../utils/sharePDF';
+import { generatePDFBase64, sendEmailWithPDF } from '../utils/sharePDF';
+import { EmailModal } from '../components/EmailModal';
 
 type ReportType = 
   | 'rent-roll' | 'income-statement' | 'cash-flow' | 'balance-sheet' | 'general-ledger'
@@ -11,7 +12,7 @@ type ReportType =
   | 'notices' | 'security-deposit' | 'trust-accounting';
 
 export const Reports: React.FC = () => {
-  const { data } = useStore();
+  const { data, updateSettings } = useStore();
   const [activeReport, setActiveReport] = useState<ReportType>('rent-roll');
   
   const [startDate, setStartDate] = useState<string>(
@@ -52,13 +53,36 @@ export const Reports: React.FC = () => {
     html2pdf().set(opt).from(element).save();
   };
 
-  const handleEmailReport = () => {
-    generateAndSharePDF(
-        'report-content',
-        `${activeReport}-report.pdf`,
-        `Rental Property Report: ${activeReport.replace('-', ' ')}`,
-        `Please find the attached report for ${activeReport.replace('-', ' ')}.`
-    );
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [pdfBase64, setPdfBase64] = useState<string | null>(null);
+
+  const handleEmailClick = async () => {
+    const base64 = await generatePDFBase64('report-content', `${activeReport}-report.pdf`, 'portrait');
+    setPdfBase64(base64);
+    setShowEmailModal(true);
+  };
+
+  const handleSendEmailReport = async (toEmails: string, ccMyself: boolean, customMessage: string) => {
+    let finalRecipients = toEmails;
+    if (ccMyself && data.settings.landlordEmail && !toEmails.includes(data.settings.landlordEmail)) {
+        finalRecipients += `, ${data.settings.landlordEmail}`;
+    }
+
+    const defaultBody = `Please find the attached report for ${activeReport.replace('-', ' ')}.`;
+    const formattedBody = customMessage ? `${customMessage}\n\n---\n${defaultBody}` : defaultBody;
+
+    if (pdfBase64) {
+      await sendEmailWithPDF(
+          `${activeReport}-report.pdf`,
+          `Rental Property Report: ${activeReport.replace('-', ' ')}`,
+          formattedBody,
+          pdfBase64,
+          finalRecipients,
+          data.settings.landlordEmail,
+          data.settings.gmailAppPassword || ''
+      );
+    }
+    setShowEmailModal(false);
   };
 
   const handleDownloadCSV = () => {
@@ -122,24 +146,24 @@ export const Reports: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Property</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tenant</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lease Dates</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rent Amount</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deposit Held</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Property</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tenant</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lease Dates</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rent Amount</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Deposit Held</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               <tr>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.settings.propertyAddress || 'N/A'}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{data.settings.tenantName || 'N/A'}</td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td className="px-4 py-3 whitespace-normal break-words text-sm text-gray-900">{data.settings.propertyAddress || 'N/A'}</td>
+                <td className="px-4 py-3 whitespace-normal break-words text-sm text-gray-900">{data.settings.tenantName || 'N/A'}</td>
+                <td className="px-4 py-3 whitespace-normal break-words text-sm text-gray-500">
                   {data.settings.leaseStartDate || 'N/A'} to {data.settings.leaseEndDate || 'N/A'}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                <td className="px-4 py-3 whitespace-normal break-words text-sm text-gray-900">
                   {data.records.length > 0 ? formatCurrency(data.records[data.records.length - 1].monthlyRent) : 'N/A'}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                <td className="px-4 py-3 whitespace-normal break-words text-sm text-gray-900">
                   {formatCurrency(data.settings.securityDepositHeld || 0)}
                 </td>
               </tr>
@@ -345,21 +369,21 @@ export const Reports: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Record</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Record</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {transactions.length === 0 ? (
-                <tr><td colSpan={5} className="px-6 py-4 text-center text-gray-500">No transactions found in this period.</td></tr>
+                <tr><td colSpan={5} className="px-4 py-3 text-center text-gray-500">No transactions found in this period.</td></tr>
               ) : (
                 transactions.map((t, i) => (
                   <tr key={i}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{t.date}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-4 py-3 whitespace-normal break-words text-sm text-gray-900">{t.date}</td>
+                    <td className="px-4 py-3 whitespace-normal break-words text-sm text-gray-500">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                         t.type === 'Payment' ? 'bg-green-100 text-green-800' :
                         t.type === 'Expense' ? 'bg-red-100 text-red-800' :
@@ -369,9 +393,9 @@ export const Reports: React.FC = () => {
                         {t.type}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">{t.desc || '-'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{t.monthId}</td>
-                    <td className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${t.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    <td className="px-4 py-3 text-sm text-gray-500">{t.desc || '-'}</td>
+                    <td className="px-4 py-3 whitespace-normal break-words text-sm text-gray-500">{t.monthId}</td>
+                    <td className={`px-4 py-3 whitespace-normal break-words text-sm text-right font-medium ${t.amount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                       {formatCurrency(Math.abs(t.amount))} {t.amount < 0 ? '(Dr)' : '(Cr)'}
                     </td>
                   </tr>
@@ -467,27 +491,27 @@ export const Reports: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Charge</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Payment</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Charge</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Payment</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Balance</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {ledgerWithBalance.length === 0 ? (
-                <tr><td colSpan={5} className="px-6 py-4 text-center text-gray-500">No ledger activity in this period.</td></tr>
+                <tr><td colSpan={5} className="px-4 py-3 text-center text-gray-500">No ledger activity in this period.</td></tr>
               ) : (
                 ledgerWithBalance.map((t, i) => (
                   <tr key={i}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{t.date}</td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
+                    <td className="px-4 py-3 whitespace-normal break-words text-sm text-gray-900">{t.date}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900">
                       <div className="font-medium">{t.type}</div>
                       <div className="text-gray-500 text-xs">{t.desc}</div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-red-600">{t.charge > 0 ? formatCurrency(t.charge) : ''}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-green-600">{t.payment > 0 ? formatCurrency(t.payment) : ''}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-gray-900">{formatCurrency(t.balance)}</td>
+                    <td className="px-4 py-3 whitespace-normal break-words text-sm text-right text-red-600">{t.charge > 0 ? formatCurrency(t.charge) : ''}</td>
+                    <td className="px-4 py-3 whitespace-normal break-words text-sm text-right text-green-600">{t.payment > 0 ? formatCurrency(t.payment) : ''}</td>
+                    <td className="px-4 py-3 whitespace-normal break-words text-sm text-right font-medium text-gray-900">{formatCurrency(t.balance)}</td>
                   </tr>
                 ))
               )}
@@ -516,22 +540,22 @@ export const Reports: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Applied To</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Note</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Applied To</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Note</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {payments.length === 0 ? (
-                <tr><td colSpan={4} className="px-6 py-4 text-center text-gray-500">No payments found.</td></tr>
+                <tr><td colSpan={4} className="px-4 py-3 text-center text-gray-500">No payments found.</td></tr>
               ) : (
                 payments.map((p, i) => (
                   <tr key={i}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{p.date}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{p.monthId}</td>
-                    <td className="px-6 py-4 text-sm text-gray-500">{p.note || '-'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-green-600">{formatCurrency(p.amount)}</td>
+                    <td className="px-4 py-3 whitespace-normal break-words text-sm text-gray-900">{p.date}</td>
+                    <td className="px-4 py-3 whitespace-normal break-words text-sm text-gray-500">{p.monthId}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500">{p.note || '-'}</td>
+                    <td className="px-4 py-3 whitespace-normal break-words text-sm text-right font-medium text-green-600">{formatCurrency(p.amount)}</td>
                   </tr>
                 ))
               )}
@@ -554,22 +578,22 @@ export const Reports: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Month Record</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Days Late</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Balance Due</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Month Record</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Days Late</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Balance Due</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {outstanding.length === 0 ? (
-                <tr><td colSpan={4} className="px-6 py-4 text-center text-gray-500">No outstanding balances!</td></tr>
+                <tr><td colSpan={4} className="px-4 py-3 text-center text-gray-500">No outstanding balances!</td></tr>
               ) : (
                 outstanding.map((r, i) => (
                   <tr key={i}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{r.id}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{r.dueDate}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">{r.stats.daysLate > 0 ? r.stats.daysLate : 0}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-bold text-red-600">{formatCurrency(r.stats.remainingBalance)}</td>
+                    <td className="px-4 py-3 whitespace-normal break-words text-sm font-medium text-gray-900">{r.id}</td>
+                    <td className="px-4 py-3 whitespace-normal break-words text-sm text-gray-500">{r.dueDate}</td>
+                    <td className="px-4 py-3 whitespace-normal break-words text-sm text-red-600">{r.stats.daysLate > 0 ? r.stats.daysLate : 0}</td>
+                    <td className="px-4 py-3 whitespace-normal break-words text-sm text-right font-bold text-red-600">{formatCurrency(r.stats.remainingBalance)}</td>
                   </tr>
                 ))
               )}
@@ -598,20 +622,20 @@ export const Reports: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Month Record</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Days Late</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Late Fee Amount</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Month Record</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Days Late</th>
+                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Late Fee Amount</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {lateFeeRecords.length === 0 ? (
-                <tr><td colSpan={3} className="px-6 py-4 text-center text-gray-500">No late fees assessed.</td></tr>
+                <tr><td colSpan={3} className="px-4 py-3 text-center text-gray-500">No late fees assessed.</td></tr>
               ) : (
                 lateFeeRecords.map((r, i) => (
                   <tr key={i}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{r.id}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{r.stats.daysLate}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-red-600">{formatCurrency(r.stats.totalLateFees)}</td>
+                    <td className="px-4 py-3 whitespace-normal break-words text-sm font-medium text-gray-900">{r.id}</td>
+                    <td className="px-4 py-3 whitespace-normal break-words text-sm text-gray-500">{r.stats.daysLate}</td>
+                    <td className="px-4 py-3 whitespace-normal break-words text-sm text-right font-medium text-red-600">{formatCurrency(r.stats.totalLateFees)}</td>
                   </tr>
                 ))
               )}
@@ -640,21 +664,21 @@ export const Reports: React.FC = () => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {notices.length === 0 ? (
-                <tr><td colSpan={4} className="px-6 py-4 text-center text-gray-500">No notices recorded in this period.</td></tr>
+                <tr><td colSpan={4} className="px-4 py-3 text-center text-gray-500">No notices recorded in this period.</td></tr>
               ) : (
                 notices.map((n, i) => (
                   <tr key={i}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{n.date}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{n.type}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <td className="px-4 py-3 whitespace-normal break-words text-sm text-gray-900">{n.date}</td>
+                    <td className="px-4 py-3 whitespace-normal break-words text-sm font-medium text-gray-900">{n.type}</td>
+                    <td className="px-4 py-3 whitespace-normal break-words text-sm">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                         n.status === 'Resolved' ? 'bg-green-100 text-green-800' :
                         n.status === 'Served' ? 'bg-yellow-100 text-yellow-800' :
@@ -663,7 +687,7 @@ export const Reports: React.FC = () => {
                         {n.status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">{n.notes || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500">{n.notes || '-'}</td>
                   </tr>
                 ))
               )}
@@ -732,6 +756,24 @@ export const Reports: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <EmailModal
+        isOpen={showEmailModal}
+        onClose={() => {
+           setShowEmailModal(false);
+           setPdfBase64(null);
+        }}
+        onSend={handleSendEmailReport}
+        defaultTo={[data.settings.tenantEmail, data.settings.tenantEmail2].filter(Boolean).join(', ')}
+        landlordEmail={data.settings.landlordEmail}
+        savedContacts={data.settings.savedContacts || []}
+        onSaveContacts={(contacts) => updateSettings({ ...data.settings, savedContacts: contacts })}
+        onDeleteContact={(contact) => {
+          const current = data.settings.savedContacts || [];
+          updateSettings({ ...data.settings, savedContacts: current.filter(c => c !== contact) });
+        }}
+        pdfBase64={pdfBase64}
+      />
+
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
@@ -845,7 +887,7 @@ export const Reports: React.FC = () => {
               </button>
             )}
             <button 
-              onClick={handleEmailReport}
+              onClick={handleEmailClick}
               className="flex items-center space-x-2 text-sm text-gray-500 hover:text-gray-700 bg-white border px-3 py-1.5 rounded-md shadow-sm"
             >
               <Mail size={16} />

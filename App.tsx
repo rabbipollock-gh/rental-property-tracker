@@ -1,5 +1,5 @@
-import React from 'react';
-import { HashRouter as Router, Routes, Route } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
 import { MonthDetails } from './pages/MonthDetails';
@@ -10,8 +10,32 @@ import { Reports } from './pages/Reports';
 import { Expenses } from './pages/Expenses';
 import { ErrorLog } from './pages/ErrorLog';
 import { ErrorLogger } from './components/ErrorLogger';
+import { Auth } from './pages/Auth';
+import { supabase } from './services/supabaseClient';
 
 const App: React.FC = () => {
+  const [session, setSession] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase?.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+    });
+
+    supabase?.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+  }, []);
+
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  }
+
+  if (!session) {
+    return <Auth />;
+  }
+
   return (
     <Router>
       <ErrorLogger />
@@ -26,6 +50,7 @@ const App: React.FC = () => {
           <Route path="/logs" element={<ErrorLog />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
   );

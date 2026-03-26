@@ -5,11 +5,12 @@ import { calculateMonthStats, formatCurrency, formatDate } from '../utils/calcul
 import { MONTH_NAMES } from '../constants';
 import { ArrowLeft, Printer, Mail } from 'lucide-react';
 import html2pdf from 'html2pdf.js';
-import { generateAndSharePDF } from '../utils/sharePDF';
+import { generatePDFBase64, sendEmailWithPDF } from '../utils/sharePDF';
+import { EmailModal } from '../components/EmailModal';
 
 export const Statement: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const { getMonth, data } = useStore();
+  const { getMonth, data, updateSettings } = useStore();
   const settings = data.settings;
   
   const record = getMonth(id || '');
@@ -32,17 +33,43 @@ export const Statement: React.FC = () => {
     html2pdf().set(opt).from(element).save();
   };
 
-  const handleEmail = () => {
-    const emails = [settings.tenantEmail, settings.tenantEmail2].filter(Boolean).join(',');
-    const names = [settings.tenantName, settings.tenantName2].filter(Boolean).join(' and ');
+  const [showEmailModal, setShowEmailModal] = React.useState(false);
+  const [pdfBase64, setPdfBase64] = React.useState<string | null>(null);
 
-    generateAndSharePDF(
-        'statement-content',
-        `statement-${MONTH_NAMES[record.month - 1]}-${record.year}.pdf`,
-        `Rent Statement: ${MONTH_NAMES[record.month - 1]} ${record.year}`,
-        `Hi ${names},\n\nPlease find your rent statement for ${MONTH_NAMES[record.month - 1]} ${record.year} attached.\n\nThank you,\n${settings.landlordName}`,
-        emails
+  const handleEmailClick = async () => {
+    const base64 = await generatePDFBase64(
+      'statement-content',
+      `statement-${MONTH_NAMES[record.month - 1]}-${record.year}.pdf`,
+      'portrait'
     );
+    setPdfBase64(base64);
+    setShowEmailModal(true);
+  };
+
+  const handleSendEmail = async (toEmails: string, ccMyself: boolean, customMessage: string) => {
+    const names = [settings.tenantName, settings.tenantName2].filter(Boolean).join(' and ');
+    
+    // Add landlord email if CC selected
+    let finalRecipients = toEmails;
+    if (ccMyself && settings.landlordEmail && !toEmails.includes(settings.landlordEmail)) {
+        finalRecipients += `, ${settings.landlordEmail}`;
+    }
+
+    const defaultBody = `Hi ${names},\n\nPlease find your rent statement for ${MONTH_NAMES[record.month - 1]} ${record.year} attached.\n\nThank you,\n${settings.landlordName}`;
+    const formattedBody = customMessage ? `${customMessage}\n\n---\n${defaultBody}` : defaultBody;
+
+    if (pdfBase64) {
+      await sendEmailWithPDF(
+          `statement-${MONTH_NAMES[record.month - 1]}-${record.year}.pdf`,
+          `Rent Statement: ${MONTH_NAMES[record.month - 1]} ${record.year}`,
+          formattedBody,
+          pdfBase64,
+          finalRecipients,
+          settings.landlordEmail,
+          settings.gmailAppPassword || ''
+      );
+    }
+    setShowEmailModal(false);
   };
 
   return (
@@ -55,21 +82,39 @@ export const Statement: React.FC = () => {
           </Link>
           <div className="flex space-x-2">
             <button 
-              onClick={handleEmail}
-              className="flex items-center space-x-2 bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded shadow-sm hover:bg-gray-50"
+              onClick={handleEmailClick}
+              className="flex items-center space-x-2 bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded shadow-sm hover:bg-gray-50 transition-colors"
             >
                <Mail size={18} />
                <span>Email Statement</span>
             </button>
             <button 
               onClick={handlePrint}
-              className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700"
+              className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded shadow hover:bg-blue-700 transition-colors"
             >
                <Printer size={18} />
                <span>Print / Save as PDF</span>
             </button>
           </div>
        </div>
+
+       <EmailModal
+         isOpen={showEmailModal}
+         onClose={() => {
+            setShowEmailModal(false);
+            setPdfBase64(null);
+         }}
+         onSend={handleSendEmail}
+         defaultTo={[settings.tenantEmail, settings.tenantEmail2].filter(Boolean).join(', ')}
+         landlordEmail={settings.landlordEmail}
+         savedContacts={settings.savedContacts || []}
+         onSaveContacts={(contacts) => updateSettings({ ...settings, savedContacts: contacts })}
+         onDeleteContact={(contact) => {
+           const current = settings.savedContacts || [];
+           updateSettings({ ...settings, savedContacts: current.filter(c => c !== contact) });
+         }}
+         pdfBase64={pdfBase64}
+       />
 
        {/* Statement Sheet - A4 styling approximation */}
        <div className="max-w-3xl mx-auto bg-white p-8 md:p-12 shadow-lg print:shadow-none print:w-full print:max-w-none print:p-0" id="statement-content">

@@ -46,12 +46,28 @@ export const Settings: React.FC = () => {
                         <input type="text" name="landlordName" value={formData.landlordName} onChange={handleChange} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm border p-2" />
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-gray-700">Email</label>
+                        <label className="block text-sm font-medium text-gray-700">Email (Used for replying to statements)</label>
                         <input type="email" name="landlordEmail" value={formData.landlordEmail} onChange={handleChange} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm border p-2" />
                     </div>
                     <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-gray-700">Address (For Statements)</label>
                         <textarea name="landlordAddress" rows={2} value={formData.landlordAddress} onChange={handleChange} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm border p-2" />
+                    </div>
+                </div>
+            </div>
+
+            {/* Email Config Section */}
+            <div>
+                <h3 className="text-lg font-semibold text-gray-900 border-b pb-2 mb-4">Email Delivery Settings</h3>
+                <div className="bg-blue-50 border border-blue-100 p-4 rounded-lg mb-6">
+                    <p className="text-sm text-blue-800">
+                      To send emails directly from your Gmail account, generate an <strong>App Password</strong> in your Google Account settings (Security {'>'} 2-Step Verification {'>'} App Passwords). Your credentials are saved securely in your private, encrypted database row.
+                    </p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Gmail App Password</label>
+                        <input type="password" name="gmailAppPassword" value={formData.gmailAppPassword || ''} onChange={handleChange} placeholder="16-character app password" className="mt-1 block w-full border-gray-300 rounded-md shadow-sm border p-2 font-mono text-sm" />
                     </div>
                 </div>
             </div>
