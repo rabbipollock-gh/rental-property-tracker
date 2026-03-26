@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { AppData, MonthRecord, PropertySettings, ImportResult, Expense } from '../types';
+import { AppData, MonthRecord, PropertySettings, ImportResult, Expense, EditTarget } from '../types';
 import { APP_STORAGE_KEY, INITIAL_DATA } from './useStore.initial';
 import { getStorageData, setStorageData } from '../services/storageService';
 import { importData as importDataService } from '../services/importService';
@@ -10,6 +10,7 @@ import { fetchAppData, saveAppData } from '../services/supabaseService';
 
 export const useStore = () => {
   const [data, setData] = useState<AppData>(() => getStorageData(APP_STORAGE_KEY, INITIAL_DATA));
+  const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
   const isFirstMount = useRef(true);
 
   // Load from Supabase on mount
@@ -81,6 +82,8 @@ export const useStore = () => {
 
   return {
     data,
+    editTarget,
+    setEditTarget,
     ...propertySettings,
     ...monthRecords,
     ...propertyExpensesHook,

@@ -122,3 +122,9 @@ export interface MonthStats {
   isPaidOff: boolean;
   daysLate: number;
 }
+
+export interface EditTarget {
+  type: 'payment' | 'fee' | 'adjustment' | 'expense' | null;
+  item: Payment | Fee | Adjustment | Expense | null;
+  monthId?: string; // Empty if global expense
+}

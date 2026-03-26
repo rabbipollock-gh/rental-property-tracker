@@ -4,6 +4,7 @@ import { LayoutDashboard, Settings, FileText, Building2, ArrowRightLeft, FolderO
 import { useStore } from '../hooks/useStore';
 import { Modal } from './Modal';
 import { ExpenseModal } from './ExpenseModal';
+import { GlobalEditModals } from './GlobalEditModals';
 
 const NavItem = ({ to, icon: Icon, label, active }: any) => (
   <Link
@@ -222,6 +223,8 @@ export const Layout: React.FC = () => {
           title="Log Global Expense"
           showRecurringOption={true}
       />
+      
+      <GlobalEditModals />
     </div>
   );
 };

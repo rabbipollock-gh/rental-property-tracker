@@ -1,25 +1,25 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useStore } from '../hooks/useStore';
 import { Modal } from '../components/Modal';
-import { calculateMonthStats, formatCurrency } from '../utils/calculations';
-import { Plus, ChevronRight, AlertCircle, CheckCircle, Upload, ChevronDown, ChevronUp } from 'lucide-react';
+import { calculateMonthStats, formatCurrency, formatDate } from '../utils/calculations';
+import { Plus, ChevronRight, AlertCircle, CheckCircle, Upload, ChevronDown, ChevronUp, Pencil } from 'lucide-react';
 import { MONTH_NAMES } from '../constants';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import * as Papa from 'papaparse';
 import { ImportResult } from '../types';
 
 export const Dashboard: React.FC = () => {
-  const { data, addMonth, importData } = useStore();
+  const { data, addMonth, importData, setEditTarget } = useStore();
   const navigate = useNavigate();
   const [isAddModalOpen, setAddModalOpen] = useState(false);
   const [isImportModalOpen, setImportModalOpen] = useState(false);
   const [showOutstandingBreakdown, setShowOutstandingBreakdown] = useState(false);
   const [importError, setImportError] = useState('');
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [chartRange, setChartRange] = useState<'6m' | '12m' | 'ytd' | 'all'>('6m');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // New Month Form State - Improved with auto-suggestions
   const latestRecord = data.records.length > 0 ? data.records[0] : null;
 
   const getNextMonth = () => {
@@ -41,7 +41,6 @@ export const Dashboard: React.FC = () => {
     return `${nextYear}-${nextMonth}-01`;
   });
 
-  // Update form when modal opens (if records changed)
   useEffect(() => {
     if (isAddModalOpen) {
       const nextYear = getNextYear();
@@ -77,19 +76,11 @@ export const Dashboard: React.FC = () => {
         setImportError('');
         if (fileInputRef.current) fileInputRef.current.value = '';
       },
-      error: (error) => {
-        setImportError(error.message);
-      }
+      error: (error) => setImportError(error.message)
     });
   };
 
-  const stats = data.records.map(r => {
-    const s = calculateMonthStats(r);
-    return {
-      ...r,
-      stats: s
-    };
-  });
+  const stats = useMemo(() => data.records.map(r => ({ ...r, stats: calculateMonthStats(r) })), [data.records]);
 
   const totalOutstanding = stats.reduce((sum, r) => sum + r.stats.remainingBalance, 0);
   const totalRentOwed = stats.reduce((sum, r) => sum + r.stats.rentOwed, 0);
@@ -102,36 +93,53 @@ export const Dashboard: React.FC = () => {
   const totalPropertyExpenses = (data.propertyExpenses || []).reduce((sum, e) => sum + e.amount, 0);
   const netCashFlow = totalCollected - totalTenantExpenses - totalPropertyExpenses;
 
-  // Global expenses by month "YYYY-MM"
   const globalExpensesByMonth: Record<string, number> = {};
   (data.propertyExpenses || []).forEach(e => {
      if (e.date) {
-        const monthKey = e.date.substring(0, 7); // "YYYY-MM"
+        const monthKey = e.date.substring(0, 7);
         globalExpensesByMonth[monthKey] = (globalExpensesByMonth[monthKey] || 0) + e.amount;
      }
   });
 
-  // Chart Data (Last 6 months)
-  const chartData = [...stats].reverse().slice(0, 6).reverse().map(s => {
-    const monthKey = `${s.year}-${String(s.month).padStart(2, '0')}`;
-    const propertyExp = globalExpensesByMonth[monthKey] || 0;
-    return {
-      id: s.id,
-      name: `${(MONTH_NAMES[s.month - 1] || '').substring(0, 3)} ${s.year}`,
-      collected: s.stats.totalPayments,
-      owed: s.stats.totalOwed,
-      expenses: (s.expenses || []).reduce((sum, e) => sum + e.amount, 0) + propertyExp
-    };
-  });
+  const chartData = useMemo(() => {
+    let baseStats = [...stats];
+    if (chartRange === 'ytd') {
+        const currentYear = new Date().getFullYear();
+        baseStats = baseStats.filter(s => s.year === currentYear);
+    } else if (chartRange === '6m') {
+        baseStats = baseStats.slice(0, 6);
+    } else if (chartRange === '12m') {
+        baseStats = baseStats.slice(0, 12);
+    }
+
+    return baseStats.reverse().map(s => {
+        const monthKey = `${s.year}-${String(s.month).padStart(2, '0')}`;
+        const propertyExp = globalExpensesByMonth[monthKey] || 0;
+        return {
+            id: s.id,
+            name: `${(MONTH_NAMES[s.month - 1] || '').substring(0, 3)} ${s.year}`,
+            collected: s.stats.totalPayments,
+            owed: s.stats.totalOwed,
+            expenses: (s.expenses || []).reduce((sum, e) => sum + e.amount, 0) + propertyExp
+        };
+    });
+  }, [stats, chartRange, globalExpensesByMonth]);
 
   const handleChartClick = (data: any) => {
-    if (data && data.activePayload && data.activePayload.length > 0) {
-      const monthId = data.activePayload[0].payload.id;
-      if (monthId) {
-        navigate(`/month/${monthId}`);
-      }
+    if (data?.activePayload?.[0]?.payload?.id) {
+      navigate(`/month/${data.activePayload[0].payload.id}`);
     }
   };
+
+  const allTransactions = useMemo(() => {
+    return data.records.flatMap(r => [
+      ...r.payments.map(p => ({ ...p, type: 'Rent Payment', amount: p.amount, isIncome: true, monthId: r.id, originalType: 'payment', item: p })),
+      ...r.manualFees.map(f => ({ ...f, type: 'Manual Fee', amount: -f.amount, isIncome: false, monthId: r.id, originalType: 'fee', item: f })),
+      ...r.adjustments.map(a => ({ ...a, type: `Adjustment (${a.reason})`, amount: a.amount, isIncome: a.amount >= 0, monthId: r.id, originalType: 'adjustment', item: a })),
+      ...(r.expenses || []).map(e => ({ ...e, type: `Tenant Exp - ${e.category}`, amount: -e.amount, isIncome: false, monthId: r.id, originalType: 'expense', item: e }))
+    ]).concat((data.propertyExpenses || []).map(e => ({ ...e, type: `Global Exp - ${e.category}`, amount: -e.amount, isIncome: false, monthId: '', originalType: 'expense', item: e })))
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [data.records, data.propertyExpenses]);
 
   return (
     <div className="space-y-8">
@@ -142,55 +150,29 @@ export const Dashboard: React.FC = () => {
           <p className="text-gray-500">Overview of your rental property performance.</p>
         </div>
         <div className="flex items-center space-x-2">
-          <button
-            onClick={() => setImportModalOpen(true)}
-            className="flex items-center space-x-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg transition shadow-sm"
-          >
-            <Upload size={18} />
-            <span>Import CSV</span>
+          <button onClick={() => setImportModalOpen(true)} className="flex items-center space-x-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg transition shadow-sm">
+            <Upload size={18} /><span>Import CSV</span>
           </button>
-          <button
-            onClick={() => setAddModalOpen(true)}
-            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition shadow-sm"
-          >
-            <Plus size={18} />
-            <span>New Month</span>
+          <button onClick={() => setAddModalOpen(true)} className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition shadow-sm">
+            <Plus size={18} /><span>New Month</span>
           </button>
         </div>
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div
-          className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-shadow"
-          onClick={() => setShowOutstandingBreakdown(!showOutstandingBreakdown)}
-        >
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 cursor-pointer hover:shadow-md transition-shadow" onClick={() => setShowOutstandingBreakdown(!showOutstandingBreakdown)}>
           <div className="flex justify-between items-center">
             <h3 className="text-sm font-medium text-gray-500">Total Outstanding</h3>
             {showOutstandingBreakdown ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
           </div>
           <p className="text-3xl font-bold text-red-600 mt-2">{formatCurrency(totalOutstanding)}</p>
-
           {showOutstandingBreakdown && (
             <div className="mt-4 pt-4 border-t border-gray-100 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Rent Owed</span>
-                <span className="font-medium text-red-600">{formatCurrency(totalRentOwed)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Late Fees</span>
-                <span className="font-medium text-red-600">{formatCurrency(totalLateFeesOwed)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Eviction Fees</span>
-                <span className="font-medium text-red-600">{formatCurrency(totalEvictionFeesOwed)}</span>
-              </div>
-              {totalOtherFeesOwed > 0 && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Other Fees</span>
-                  <span className="font-medium text-red-600">{formatCurrency(totalOtherFeesOwed)}</span>
-                </div>
-              )}
+              <div className="flex justify-between text-sm"><span className="text-gray-600">Rent Owed</span><span className="font-medium text-red-600">{formatCurrency(totalRentOwed)}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-gray-600">Late Fees</span><span className="font-medium text-red-600">{formatCurrency(totalLateFeesOwed)}</span></div>
+              <div className="flex justify-between text-sm"><span className="text-gray-600">Eviction Fees</span><span className="font-medium text-red-600">{formatCurrency(totalEvictionFeesOwed)}</span></div>
+              {totalOtherFeesOwed > 0 && <div className="flex justify-between text-sm"><span className="text-gray-600">Other Fees</span><span className="font-medium text-red-600">{formatCurrency(totalOtherFeesOwed)}</span></div>}
             </div>
           )}
         </div>
@@ -198,7 +180,7 @@ export const Dashboard: React.FC = () => {
           <h3 className="text-sm font-medium text-gray-500">Total Collected</h3>
           <p className="text-3xl font-bold text-emerald-600 mt-2">{formatCurrency(totalCollected)}</p>
         </div>
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 sm:col-span-2 md:col-span-1">
           <h3 className="text-sm font-medium text-gray-500">Net Cash Flow</h3>
           <p className={`text-3xl font-bold mt-2 ${netCashFlow >= 0 ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(netCashFlow)}</p>
         </div>
@@ -206,21 +188,28 @@ export const Dashboard: React.FC = () => {
 
       {/* Chart */}
       {chartData.length > 0 && (
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 h-80">
-          <h3 className="text-lg font-semibold mb-4">Financial Overview <span className="text-sm font-normal text-gray-400 ml-2">(Click a bar for details)</span></h3>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData} onClick={handleChartClick} style={{ cursor: 'pointer' }}>
-              <XAxis dataKey="name" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
-              <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value}`} />
-              <Tooltip
-                cursor={{ fill: '#f3f4f6' }}
-                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-              />
-              <Bar dataKey="collected" name="Collected" fill="#10b981" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="owed" name="Total Owed" fill="#ef4444" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="expenses" name="Expenses" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+        <div className="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-gray-100">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+            <h3 className="text-lg font-semibold">Financial Overview <span className="text-sm font-normal text-gray-400 hidden sm:inline-block ml-2">(Click a bar for details)</span></h3>
+            <div className="flex bg-gray-100 p-1 rounded-lg">
+                <button onClick={() => setChartRange('6m')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition ${chartRange === '6m' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>6 Mos</button>
+                <button onClick={() => setChartRange('12m')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition ${chartRange === '12m' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>12 Mos</button>
+                <button onClick={() => setChartRange('ytd')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition ${chartRange === 'ytd' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>YTD</button>
+                <button onClick={() => setChartRange('all')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition ${chartRange === 'all' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>Max</button>
+            </div>
+          </div>
+          <div className="h-72 sm:h-80 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} onClick={handleChartClick} style={{ cursor: 'pointer' }} margin={{ top: 0, left: -20, right: 0, bottom: 0 }}>
+                <XAxis dataKey="name" stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} />
+                <YAxis stroke="#9ca3af" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `$${value}`} />
+                <Tooltip cursor={{ fill: '#f3f4f6' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }} />
+                <Bar dataKey="collected" name="Collected" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="owed" name="Total Owed" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="expenses" name="Expenses" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       )}
 
@@ -231,39 +220,37 @@ export const Dashboard: React.FC = () => {
           <Link to="/transactions" className="text-sm text-blue-600 hover:text-blue-800 font-medium">View All &rarr;</Link>
         </div>
         <div className="divide-y divide-gray-100">
-          {(() => {
-            const allTransactions = data.records.flatMap(r => [
-              ...r.payments.map(p => ({ ...p, type: 'Rent Payment', amount: p.amount, isIncome: true })),
-              ...r.manualFees.map(f => ({ ...f, type: 'Manual Fee', amount: -f.amount, isIncome: false })),
-              ...r.adjustments.map(a => ({ ...a, type: `Adjustment (${a.reason})`, amount: a.amount, isIncome: a.amount >= 0 })),
-              ...(r.expenses || []).map(e => ({ ...e, type: `Expense - ${e.category}`, amount: -e.amount, isIncome: false }))
-            ]).concat((data.propertyExpenses || []).map(e => ({ ...e, type: `Prop Expense - ${e.category}`, amount: -e.amount, isIncome: false })))
-              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-            if (allTransactions.length === 0) {
-              return <div className="p-8 text-center text-gray-500">No recent transactions.</div>;
-            }
-
-            return allTransactions.slice(0, 10).map((t, idx) => (
+          {allTransactions.length === 0 ? (
+            <div className="p-8 text-center text-gray-500">No recent transactions.</div>
+          ) : (
+            allTransactions.slice(0, 10).map((t, idx) => (
               <div key={idx} className="p-4 sm:px-6 hover:bg-gray-50 transition flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className={`p-2 rounded-full ${t.isIncome ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                <div className="flex items-center space-x-4 flex-1">
+                  <div className={`p-2 rounded-full hidden sm:block ${t.isIncome ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
                     {t.isIncome ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
                   </div>
-                  <div>
+                  <div className="flex-1">
                     <h4 className="text-sm font-semibold text-gray-900">{t.type}</h4>
-                    <p className="text-xs text-gray-500">{t.date}</p>
+                    <p className="text-xs text-gray-500">{formatDate(t.date)}</p>
                   </div>
                 </div>
-                <div className={`font-bold ${t.isIncome ? 'text-green-600' : 'text-gray-900'}`}>
-                  {t.isIncome ? '+' : ''}{formatCurrency(Math.abs(t.amount))}
+                <div className="flex items-center space-x-4">
+                  <div className={`font-bold text-right ${t.isIncome ? 'text-green-600' : 'text-gray-900'}`}>
+                    {t.isIncome ? '+' : ''}{formatCurrency(Math.abs(t.amount))}
+                  </div>
+                  <button 
+                    onClick={() => setEditTarget({ type: t.originalType as any, item: t.item, monthId: t.monthId })}
+                    className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 bg-gray-50 border border-gray-200 rounded-lg transition"
+                    title="Edit Transaction"
+                  >
+                    <Pencil size={14} />
+                  </button>
                 </div>
               </div>
-            ));
-          })()}
+            ))
+          )}
         </div>
       </div>
-
       {/* Add Month Modal */}
       <Modal isOpen={isAddModalOpen} onClose={() => setAddModalOpen(false)} title="Start New Month">
         <form onSubmit={handleAddMonth} className="space-y-4">

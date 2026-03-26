@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { Dashboard } from './pages/Dashboard';
+import { MonthDetails } from './pages/MonthDetails';
 import { Transactions } from './pages/Transactions';
 import { Properties } from './pages/Properties';
 import { Documents } from './pages/Documents';
@@ -44,6 +45,7 @@ const App: React.FC = () => {
         <Route path="/receipt/:monthId/:paymentId" element={<PaymentReceipt />} />
         <Route element={<Layout />}>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/month/:id" element={<MonthDetails />} />
           <Route path="/transactions" element={<Transactions />} />
           <Route path="/properties" element={<Properties />} />
           <Route path="/documents" element={<Documents />} />
