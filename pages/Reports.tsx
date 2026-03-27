@@ -12,8 +12,9 @@ type ReportType =
   | 'notices' | 'security-deposit' | 'trust-accounting';
 
 export const Reports: React.FC = () => {
-  const { data, updateSettings } = useStore();
+  const { data, updateSettings, properties, leases } = useStore();
   const [activeReport, setActiveReport] = useState<ReportType>('rent-roll');
+  const [selectedPropertyFilterId, setSelectedPropertyFilterId] = useState<string>('all');
   
   const [startDate, setStartDate] = useState<string>(
     new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0]
@@ -22,12 +23,27 @@ export const Reports: React.FC = () => {
     new Date().toISOString().split('T')[0]
   );
 
+  const filteredRecords = useMemo(() => {
+     if (selectedPropertyFilterId === 'all') return data.records;
+     return data.records.filter(r => {
+         if (!r.leaseId) return false;
+         const lease = leases?.find(l => l.id === r.leaseId);
+         return lease?.propertyId === selectedPropertyFilterId;
+     });
+  }, [data.records, leases, selectedPropertyFilterId]);
+
+  const filteredPropertyExpenses = useMemo(() => {
+     const exps = data.propertyExpenses || [];
+     if (selectedPropertyFilterId === 'all') return exps;
+     return exps.filter(e => e.propertyId === selectedPropertyFilterId);
+  }, [data.propertyExpenses, selectedPropertyFilterId]);
+
   const stats = useMemo(() => {
-    return data.records.map(r => ({
+    return filteredRecords.map(r => ({
       ...r,
       stats: calculateMonthStats(r)
     }));
-  }, [data.records]);
+  }, [filteredRecords]);
 
   // --- Helper Functions for Reports ---
   
@@ -87,7 +103,7 @@ export const Reports: React.FC = () => {
   const handleDownloadCSV = () => {
     const transactions: any[] = [];
     
-    data.records.forEach(r => {
+    filteredRecords.forEach(r => {
       r.payments.forEach(p => transactions.push({ date: p.date, type: 'Payment', category: 'Income', desc: p.note, amount: p.amount, record: r.id }));
       r.manualFees.forEach(f => transactions.push({ date: f.date, type: 'Fee', category: f.category || 'Fee', desc: f.description, amount: -f.amount, record: r.id }));
       r.adjustments.forEach(a => transactions.push({ date: a.date, type: 'Adjustment', category: 'Adjustment', desc: a.reason, amount: a.amount, record: r.id }));
@@ -100,7 +116,7 @@ export const Reports: React.FC = () => {
       });
     });
 
-    (data.propertyExpenses || []).forEach(e => {
+    filteredPropertyExpenses.forEach(e => {
         if (e.isSplit && e.splits) {
             e.splits.forEach(s => transactions.push({ date: e.date, type: 'Property Exp-Split', category: s.category, desc: s.description || e.description, amount: -s.amount, record: 'Global' }));
         } else {
@@ -154,13 +170,13 @@ export const Reports: React.FC = () => {
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               <tr>
-                <td className="px-4 py-3 whitespace-normal break-words text-sm text-gray-900">{data.settings.propertyAddress || 'N/A'}</td>
-                <td className="px-4 py-3 whitespace-normal break-words text-sm text-gray-900">{data.settings.tenantName || 'N/A'}</td>
+                <td className="px-4 py-3 whitespace-normal break-words text-sm text-gray-900">{selectedPropertyFilterId === 'all' ? (data.settings.propertyAddress || 'N/A') : properties?.find(p=>p.id===selectedPropertyFilterId)?.name}</td>
+                <td className="px-4 py-3 whitespace-normal break-words text-sm text-gray-900">{selectedPropertyFilterId === 'all' ? (data.settings.tenantName || 'N/A') : 'Multiple'}</td>
                 <td className="px-4 py-3 whitespace-normal break-words text-sm text-gray-500">
                   {data.settings.leaseStartDate || 'N/A'} to {data.settings.leaseEndDate || 'N/A'}
                 </td>
                 <td className="px-4 py-3 whitespace-normal break-words text-sm text-gray-900">
-                  {data.records.length > 0 ? formatCurrency(data.records[data.records.length - 1].monthlyRent) : 'N/A'}
+                  {filteredRecords.length > 0 ? formatCurrency(filteredRecords[filteredRecords.length - 1].monthlyRent) : 'N/A'}
                 </td>
                 <td className="px-4 py-3 whitespace-normal break-words text-sm text-gray-900">
                   {formatCurrency(data.settings.securityDepositHeld || 0)}
@@ -180,7 +196,7 @@ export const Reports: React.FC = () => {
     const incomeByCategory: Record<string, number> = {};
     const expensesByCategory: Record<string, number> = {};
 
-    data.records.forEach(r => {
+    filteredRecords.forEach(r => {
       r.payments.forEach(p => {
         if (isDateInRange(p.date)) {
             totalIncome += p.amount;
@@ -201,7 +217,7 @@ export const Reports: React.FC = () => {
       });
     });
 
-    (data.propertyExpenses || []).forEach(e => {
+    filteredPropertyExpenses.forEach(e => {
         if (isDateInRange(e.date)) {
             totalExpenses += e.amount;
             if (e.isSplit && e.splits) {
@@ -326,7 +342,7 @@ export const Reports: React.FC = () => {
   const renderGeneralLedger = () => {
     const transactions: any[] = [];
     
-    data.records.forEach(r => {
+    filteredRecords.forEach(r => {
       r.payments.forEach(p => {
         if (isDateInRange(p.date)) transactions.push({ date: p.date, type: 'Payment', amount: p.amount, desc: p.note, monthId: r.id });
       });
@@ -347,7 +363,7 @@ export const Reports: React.FC = () => {
       });
     });
 
-    (data.propertyExpenses || []).forEach(e => {
+    filteredPropertyExpenses.forEach(e => {
         if (isDateInRange(e.date)) {
             if (e.isSplit && e.splits) {
                 e.splits.forEach(s => transactions.push({ date: e.date, type: 'Property Exp-Split', amount: -s.amount, category: s.category, desc: s.description || e.description, monthId: 'Global' }));
@@ -523,7 +539,7 @@ export const Reports: React.FC = () => {
 
   const renderPaymentHistory = () => {
     const payments: any[] = [];
-    data.records.forEach(r => {
+    filteredRecords.forEach(r => {
       r.payments.forEach(p => {
         if (isDateInRange(p.date)) payments.push({ ...p, monthId: r.id });
       });
@@ -647,7 +663,7 @@ export const Reports: React.FC = () => {
 
   const renderNotices = () => {
     const notices: any[] = [];
-    data.records.forEach(r => {
+    filteredRecords.forEach(r => {
       (r.notices || []).forEach(n => {
         if (isDateInRange(n.date)) notices.push({ ...n, monthId: r.id });
       });
@@ -779,21 +795,33 @@ export const Reports: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
           <p className="text-gray-500">Generate financial, collection, and compliance reports.</p>
         </div>
-        <div className="flex items-center space-x-2 bg-white p-2 rounded-lg border shadow-sm">
-          <Calendar size={18} className="text-gray-400" />
-          <input 
-            type="date" 
-            value={startDate} 
-            onChange={(e) => setStartDate(e.target.value)}
-            className="text-sm border-none focus:ring-0 text-gray-700 bg-transparent"
-          />
-          <span className="text-gray-400">to</span>
-          <input 
-            type="date" 
-            value={endDate} 
-            onChange={(e) => setEndDate(e.target.value)}
-            className="text-sm border-none focus:ring-0 text-gray-700 bg-transparent"
-          />
+        <div className="flex items-center space-x-2 w-full sm:w-auto">
+          {properties && properties.length > 0 && (
+            <select 
+                value={selectedPropertyFilterId} 
+                onChange={e => setSelectedPropertyFilterId(e.target.value)}
+                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2"
+            >
+                <option value="all">Entire Portfolio</option>
+                {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          )}
+          <div className="flex items-center space-x-2 bg-white p-2 rounded-lg border shadow-sm">
+            <Calendar size={18} className="text-gray-400" />
+            <input 
+              type="date" 
+              value={startDate} 
+              onChange={(e) => setStartDate(e.target.value)}
+              className="text-sm border-none focus:ring-0 text-gray-700 bg-transparent w-full sm:w-auto"
+            />
+            <span className="text-gray-400">to</span>
+            <input 
+              type="date" 
+              value={endDate} 
+              onChange={(e) => setEndDate(e.target.value)}
+              className="text-sm border-none focus:ring-0 text-gray-700 bg-transparent w-full sm:w-auto"
+            />
+          </div>
         </div>
       </div>
 

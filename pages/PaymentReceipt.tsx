@@ -149,6 +149,7 @@ export const PaymentReceipt: React.FC = () => {
             <h2 className="text-xl font-bold text-gray-900">{data.settings.landlordName || 'Property Management'}</h2>
             <p className="text-gray-600 mt-1 whitespace-pre-line">{data.settings.landlordAddress || 'No address provided'}</p>
             <p className="text-gray-600">{data.settings.landlordEmail}</p>
+            {data.settings.landlordPhone && <p className="text-gray-600">{data.settings.landlordPhone}</p>}
           </div>
         </div>
 

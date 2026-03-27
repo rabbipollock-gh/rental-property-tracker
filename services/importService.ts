@@ -2,7 +2,7 @@ import { MonthRecord, ImportResult, ImportLog } from '../types';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
-export const importData = (rows: any[], currentRecords: MonthRecord[]): ImportResult & { updatedRecords: MonthRecord[] } => {
+export const importData = (rows: any[], currentRecords: MonthRecord[], propertyId: string): ImportResult & { updatedRecords: MonthRecord[] } => {
   const logs: ImportLog[] = [];
   let rowsImported = 0;
 
@@ -49,14 +49,18 @@ export const importData = (rows: any[], currentRecords: MonthRecord[]): ImportRe
     const description = row.Description?.trim() || '';
 
     const monthId = dateStr.substring(0, 7); // YYYY-MM
+    // We append propertyId to the ID so multiple properties can share the same month!
+    const uniqueRecordId = `${monthId}_${propertyId}`;
     
-    let record = recordsMap.get(monthId);
+    let record = recordsMap.get(uniqueRecordId);
     if (!record) {
-      const [year, month] = monthId.split('-').map(Number);
+      const [yearStr, monthStr] = monthId.split('-');
+      
       record = {
-        id: monthId,
-        year,
-        month,
+        id: uniqueRecordId,
+        year: Number(yearStr),
+        month: Number(monthStr),
+        propertyId: propertyId, // Force mapping to the property
         monthlyRent: 0,
         dueDate: `${monthId}-01`,
         payments: [],
@@ -65,7 +69,7 @@ export const importData = (rows: any[], currentRecords: MonthRecord[]): ImportRe
         expenses: [],
         notices: []
       };
-      recordsMap.set(monthId, record);
+      recordsMap.set(uniqueRecordId, record);
       logs.push({ type: 'info', message: `Created new month record for ${monthId}`, row: rowNum });
     }
 

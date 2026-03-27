@@ -139,8 +139,8 @@ export const useStore = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.propertyExpenses?.length]);
 
-  const importData = (rows: any[]): ImportResult => {
-    const result = importDataService(rows, data.records);
+  const importData = (rows: any[], propertyId: string): ImportResult => {
+    const result = importDataService(rows, data.records, propertyId);
     setRecords(result.updatedRecords);
     return {
       success: result.success,
@@ -148,6 +148,33 @@ export const useStore = () => {
       rowsProcessed: result.rowsProcessed,
       rowsImported: result.rowsImported
     };
+  };
+
+  const clearAllData = async () => {
+    setStorageData(APP_STORAGE_KEY, INITIAL_DATA);
+    await saveAppData(INITIAL_DATA);
+    window.location.reload();
+  };
+
+  const clearPropertyData = (propertyId: string) => {
+     // 1. Find all leases for this property
+     const propertyLeaseIds = data.leases?.filter(l => l.propertyId === propertyId).map(l => l.id) || [];
+     
+     // 2. Remove all MonthRecords tied to those leases
+     const newRecords = data.records.filter(r => !r.leaseId || !propertyLeaseIds.includes(r.leaseId));
+     
+     // 3. Remove all property expenses mapped to this property
+     const newExpenses = (data.propertyExpenses || []).filter(e => e.propertyId !== propertyId);
+
+     // 4. Remove leases
+     const newLeases = (data.leases || []).filter(l => l.propertyId !== propertyId);
+
+     setData(prev => ({
+         ...prev,
+         records: newRecords,
+         propertyExpenses: newExpenses,
+         leases: newLeases
+     }));
   };
 
   return {
@@ -159,6 +186,8 @@ export const useStore = () => {
     ...propertyExpensesHook,
     ...portfolioHook,
     ...vaultHook,
-    importData
+    importData,
+    clearAllData,
+    clearPropertyData
   };
 };

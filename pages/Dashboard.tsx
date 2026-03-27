@@ -3,23 +3,17 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useStore } from '../hooks/useStore';
 import { Modal } from '../components/Modal';
 import { calculateMonthStats, formatCurrency, formatDate } from '../utils/calculations';
-import { Plus, ChevronRight, AlertCircle, CheckCircle, Upload, ChevronDown, ChevronUp, Pencil } from 'lucide-react';
+import { Plus, ChevronRight, AlertCircle, CheckCircle, ChevronDown, ChevronUp, Pencil } from 'lucide-react';
 import { MONTH_NAMES } from '../constants';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import * as Papa from 'papaparse';
-import { ImportResult } from '../types';
 
 export const Dashboard: React.FC = () => {
-  const { data, leases, properties, tenants, addMonth, importData, setEditTarget } = useStore();
+  const { data, leases, properties, tenants, addMonth, setEditTarget } = useStore();
   const navigate = useNavigate();
   const [isAddModalOpen, setAddModalOpen] = useState(false);
-  const [isImportModalOpen, setImportModalOpen] = useState(false);
   const [showOutstandingBreakdown, setShowOutstandingBreakdown] = useState(false);
-  const [importError, setImportError] = useState('');
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [chartRange, setChartRange] = useState<'6m' | '12m' | 'ytd' | 'all'>('6m');
   const [selectedPropertyFilterId, setSelectedPropertyFilterId] = useState<string>('all');
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const latestRecord = data.records.length > 0 ? data.records[0] : null;
 
@@ -67,27 +61,6 @@ export const Dashboard: React.FC = () => {
     if (!dueDate) return;
     addMonth(year, month, rent, dueDate, selectedLeaseId || undefined);
     setAddModalOpen(false);
-  };
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results) => {
-        if (results.errors.length > 0) {
-          setImportError('Error parsing CSV. Please check the format.');
-          return;
-        }
-        const result = importData(results.data);
-        setImportResult(result);
-        setImportError('');
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      },
-      error: (error) => setImportError(error.message)
-    });
   };
 
   const filteredRecords = useMemo(() => {
@@ -186,9 +159,6 @@ export const Dashboard: React.FC = () => {
               </select>
           )}
           <div className="flex items-center space-x-2 w-full sm:w-auto">
-              <button onClick={() => setImportModalOpen(true)} className="flex-1 sm:flex-none flex items-center justify-center space-x-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg transition shadow-sm">
-                <Upload size={18} /><span>Import CSV</span>
-              </button>
               <button onClick={() => setAddModalOpen(true)} className="flex-1 sm:flex-none flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition shadow-sm">
                 <Plus size={18} /><span>New Month</span>
               </button>
@@ -339,94 +309,6 @@ export const Dashboard: React.FC = () => {
             <button type="submit" className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 font-medium">Create Month Record</button>
           </div>
         </form>
-      </Modal>
-
-      {/* Import CSV Modal */}
-      <Modal isOpen={isImportModalOpen} onClose={() => { setImportModalOpen(false); setImportError(''); setImportResult(null); }} title="Import Data">
-        {importResult ? (
-          <div className="space-y-4">
-            <div className={`p-4 rounded-lg border ${importResult.rowsImported > 0 ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
-              <h3 className="font-semibold text-gray-900">Import Complete</h3>
-              <p className="text-sm text-gray-600">Processed {importResult.rowsProcessed} rows. Imported {importResult.rowsImported} items.</p>
-            </div>
-
-            <div className="max-h-64 overflow-y-auto space-y-2 border rounded-lg p-2 bg-gray-50">
-              {importResult.logs.length === 0 ? (
-                <p className="text-sm text-gray-500 text-center py-2">No logs generated.</p>
-              ) : (
-                importResult.logs.map((log, i) => (
-                  <div key={i} className={`text-xs p-2 rounded border ${log.type === 'error' ? 'bg-red-50 border-red-100 text-red-700' :
-                    log.type === 'warning' ? 'bg-yellow-50 border-yellow-100 text-yellow-700' :
-                      'bg-white border-gray-200 text-gray-600'
-                    }`}>
-                    <span className="font-semibold uppercase mr-2">{log.type}</span>
-                    {log.row && <span className="text-gray-400 mr-2">Row {log.row}:</span>}
-                    {log.message}
-                  </div>
-                ))
-              )}
-            </div>
-
-            <button onClick={() => { setImportModalOpen(false); setImportResult(null); }} className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
-              Done
-            </button>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <p className="text-sm text-gray-600">
-              Upload a CSV file to import rent, payments, fees, and adjustments. The file must have the following headers exactly:
-            </p>
-            <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 text-sm overflow-x-auto">
-              <table className="min-w-full">
-                <thead>
-                  <tr className="text-left text-gray-500">
-                    <th className="font-mono font-medium pb-2 pr-4">Date</th>
-                    <th className="font-mono font-medium pb-2 pr-4">Category</th>
-                    <th className="font-mono font-medium pb-2 pr-4">Description</th>
-                    <th className="font-mono font-medium pb-2 pr-4">Charge</th>
-                    <th className="font-mono font-medium pb-2 pr-4">Payment</th>
-                    <th className="font-mono font-medium pb-2">Balance</th>
-                  </tr>
-                </thead>
-                <tbody className="text-gray-700">
-                  <tr>
-                    <td className="pr-4">YYYY-MM-DD</td>
-                    <td className="pr-4">Rent | Payment | Fee | Adjustment</td>
-                    <td className="pr-4">Optional text</td>
-                    <td className="pr-4">Number</td>
-                    <td className="pr-4">Number</td>
-                    <td>(Ignored)</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div className="text-xs text-gray-500">
-              <p><strong>Rent:</strong> Looks at the Charge column to set the monthly rent.</p>
-              <p><strong>Payment:</strong> Looks at the Payment column to record a payment.</p>
-              <p><strong>Fee/Adjustment:</strong> Looks at Charge or Payment columns to add line items.</p>
-            </div>
-
-            {importError && (
-              <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm border border-red-100">
-                {importError}
-              </div>
-            )}
-
-            <div className="pt-4">
-              <label className="block w-full text-center bg-white border-2 border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50 cursor-pointer p-6 rounded-xl transition">
-                <Upload className="mx-auto text-gray-400 mb-2" size={24} />
-                <span className="text-sm font-medium text-gray-600">Click to select CSV file</span>
-                <input
-                  type="file"
-                  accept=".csv"
-                  className="hidden"
-                  onChange={handleFileUpload}
-                  ref={fileInputRef}
-                />
-              </label>
-            </div>
-          </div>
-        )}
       </Modal>
     </div>
   );

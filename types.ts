@@ -51,8 +51,9 @@ export interface Notice {
 }
 
 export interface MonthRecord {
-  id: string; // Format: "YYYY-MM"
+  id: string; // Format: "YYYY-MM" or "YYYY-MM_propId"
   leaseId?: string; // Phase 8: The active lease generating this baseline rent
+  propertyId?: string; // Phase 11: Direct property mapping for imported untethered ledgers
   year: number;
   month: number; // 1-12
   monthlyRent: number;
@@ -70,6 +71,7 @@ export interface PropertySettings {
   landlordName: string;
   landlordAddress: string;
   landlordEmail: string;
+  landlordPhone?: string;
   gmailAppPassword?: string;
   savedContacts?: string[];
   tenantName: string;
@@ -119,6 +121,7 @@ export interface Tenant {
   coTenantName?: string;
   coTenantEmail?: string;
   phone?: string;
+  phone2?: string;
 }
 
 export interface Lease {

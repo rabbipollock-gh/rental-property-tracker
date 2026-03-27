@@ -131,6 +131,7 @@ export const Statement: React.FC = () => {
                   <h2 className="font-bold text-lg">{settings.landlordName}</h2>
                   <div className="text-sm text-gray-600 whitespace-pre-line">{settings.landlordAddress}</div>
                   <div className="text-sm text-blue-600 mt-1">{settings.landlordEmail}</div>
+                  {settings.landlordPhone && <div className="text-sm text-gray-600">{settings.landlordPhone}</div>}
               </div>
           </div>
 

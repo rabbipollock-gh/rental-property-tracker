@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useStore } from '../hooks/useStore';
-import { Building, Users, FileSignature, Plus, Edit2, Trash2, Home, UserPlus, MapPin } from 'lucide-react';
-import { Property, Tenant, Lease, Unit } from '../types';
+import { Building, Users, FileSignature, Plus, Edit2, Trash2, Home, UserPlus, MapPin, Upload, Download } from 'lucide-react';
+import { Property, Tenant, Lease, Unit, ImportResult } from '../types';
+import { Modal } from '../components/Modal';
+import * as Papa from 'papaparse';
 
 type Tab = 'properties' | 'tenants' | 'leases';
 
 export const Properties: React.FC = () => {
-  const { properties, tenants, leases, addProperty, updateProperty, deleteProperty, addTenant, updateTenant, deleteTenant, addLease, updateLease, deleteLease } = useStore();
+  const { properties, tenants, leases, addProperty, updateProperty, deleteProperty, addTenant, updateTenant, deleteTenant, addLease, updateLease, deleteLease, clearPropertyData } = useStore();
   const [activeTab, setActiveTab] = useState<Tab>('properties');
 
   return (
@@ -48,7 +50,7 @@ export const Properties: React.FC = () => {
 
        {/* Tab Content */}
        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8 min-h-[500px]">
-          {activeTab === 'properties' && <PropertiesTab properties={properties || []} leases={leases || []} tenants={tenants || []} onAdd={addProperty} onUpdate={updateProperty} onDelete={deleteProperty} />}
+          {activeTab === 'properties' && <PropertiesTab properties={properties || []} leases={leases || []} tenants={tenants || []} onAdd={addProperty} onUpdate={updateProperty} onDelete={deleteProperty} onClearData={clearPropertyData} />}
           {activeTab === 'tenants' && <TenantsTab tenants={tenants || []} leases={leases || []} properties={properties || []} onAdd={addTenant} onUpdate={updateTenant} onDelete={deleteTenant} />}
           {activeTab === 'leases' && <LeasesTab leases={leases || []} properties={properties || []} tenants={tenants || []} onAdd={addLease} onUpdate={updateLease} onDelete={deleteLease} />}
        </div>
@@ -57,9 +59,52 @@ export const Properties: React.FC = () => {
 };
 
 // --- PROPERTIES TAB ---
-const PropertiesTab = ({ properties, leases, tenants, onAdd, onUpdate, onDelete }: any) => {
+const PropertiesTab = ({ properties, leases, tenants, onAdd, onUpdate, onDelete, onClearData }: any) => {
+    const { importData } = useStore();
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editForm, setEditForm] = useState<Partial<Property>>({});
+    
+    // Importer State
+    const [isImportModalOpen, setImportModalOpen] = useState(false);
+    const [importTargetId, setImportTargetId] = useState<string | null>(null);
+    const [importError, setImportError] = useState('');
+    const [importResult, setImportResult] = useState<ImportResult | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!importTargetId) return;
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+          if (results.errors.length > 0) {
+            setImportError('Error parsing CSV. Please check the format.');
+            return;
+          }
+          const result = importData(results.data, importTargetId);
+          setImportResult(result);
+          setImportError('');
+          if (fileInputRef.current) fileInputRef.current.value = '';
+        },
+        error: (error) => setImportError(error.message)
+      });
+    };
+
+    const downloadTemplate = () => {
+        const csvContent = "Date,Category,Description,Charge,Payment,Balance\n2026-03-01,Rent,Monthly Rent Baseline,1500,,\n2026-03-05,Payment,Bank Transfer,,1500,\n";
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", "Property_Import_Template.csv");
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     const handleSave = () => {
         if (!editForm.name) return;
@@ -114,7 +159,9 @@ const PropertiesTab = ({ properties, leases, tenants, onAdd, onUpdate, onDelete 
                             </div>
                         ) : (
                             <>
-                                <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex space-x-2">
+                                <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-1">
+                                    <button onClick={() => { setImportTargetId(p.id); setImportModalOpen(true); }} className="px-2 py-1 mr-2 text-[10px] font-bold uppercase tracking-wider text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded border border-transparent hover:border-blue-100 transition-colors flex items-center"><Upload size={10} className="mr-1" /> Import CSV</button>
+                                    <button onClick={() => { if(confirm('Clear all ledger records and expenses for this property? The building itself will remain.')) onClearData(p.id); }} className="px-2 py-1 mr-2 text-[10px] font-bold uppercase tracking-wider text-red-500 hover:text-red-700 hover:bg-red-50 rounded border border-transparent hover:border-red-100 transition-colors">Clear Ledgers</button>
                                     <button onClick={() => { setEditingId(p.id); setEditForm(p); }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit2 size={16} /></button>
                                     <button onClick={() => { if(confirm('Delete property?')) onDelete(p.id); }} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 size={16} /></button>
                                 </div>
@@ -169,6 +216,74 @@ const PropertiesTab = ({ properties, leases, tenants, onAdd, onUpdate, onDelete 
                     </div>
                 )}
             </div>
+
+            {/* Import CSV Modal */}
+            <Modal isOpen={isImportModalOpen} onClose={() => { setImportModalOpen(false); setImportError(''); setImportResult(null); setImportTargetId(null); }} title={`Import Data to Property`}>
+              {importResult ? (
+                <div className="space-y-4">
+                  <div className={`p-4 rounded-lg border ${importResult.rowsImported > 0 ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
+                    <h3 className="font-semibold text-gray-900">Import Complete</h3>
+                    <p className="text-sm text-gray-600">Processed {importResult.rowsProcessed} rows. Imported {importResult.rowsImported} items.</p>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto space-y-2 border rounded-lg p-2 bg-gray-50">
+                    {importResult.logs.length === 0 ? (
+                      <p className="text-sm text-gray-500 text-center py-2">No logs generated.</p>
+                    ) : (
+                      importResult.logs.map((log, i) => (
+                        <div key={i} className={`text-xs p-2 rounded border ${log.type === 'error' ? 'bg-red-50 border-red-100 text-red-700' :
+                          log.type === 'warning' ? 'bg-yellow-50 border-yellow-100 text-yellow-700' :
+                            'bg-white border-gray-200 text-gray-600'
+                          }`}>
+                          <span className="font-semibold uppercase mr-2">{log.type}</span>
+                          {log.row && <span className="text-gray-400 mr-2">Row {log.row}:</span>}
+                          {log.message}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <button onClick={() => { setImportModalOpen(false); setImportResult(null); setImportTargetId(null); }} className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">Done</button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm text-gray-600">Upload a CSV mapped strictly to this property ledger.</p>
+                    <button onClick={downloadTemplate} className="text-xs flex items-center text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1.5 rounded font-medium border border-blue-100 transition-colors">
+                        <Download size={14} className="mr-1" /> Template
+                    </button>
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded-lg border border-gray-200 text-sm overflow-x-auto">
+                    <table className="min-w-full">
+                      <thead>
+                        <tr className="text-left text-gray-500">
+                          <th className="font-mono font-medium pb-2 pr-4">Date</th>
+                          <th className="font-mono font-medium pb-2 pr-4">Category</th>
+                          <th className="font-mono font-medium pb-2 pr-4">Description</th>
+                          <th className="font-mono font-medium pb-2 pr-4">Charge</th>
+                          <th className="font-mono font-medium pb-2 pr-4">Payment</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-gray-700">
+                        <tr>
+                          <td className="pr-4">YYYY-MM-DD</td>
+                          <td className="pr-4">Rent | Payment | Fee</td>
+                          <td className="pr-4">Optional text</td>
+                          <td className="pr-4">Number</td>
+                          <td className="pr-4">Number</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  {importError && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm border border-red-100">{importError}</div>}
+                  <div className="pt-4">
+                    <label className="block w-full text-center bg-white border-2 border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50 cursor-pointer p-6 rounded-xl transition">
+                      <Upload className="mx-auto text-gray-400 mb-2" size={24} />
+                      <span className="text-sm font-medium text-gray-600">Click to select CSV file</span>
+                      <input type="file" accept=".csv" className="hidden" onChange={handleFileUpload} ref={fileInputRef} />
+                    </label>
+                  </div>
+                </div>
+              )}
+            </Modal>
         </div>
     );
 };
@@ -192,7 +307,7 @@ const TenantsTab = ({ tenants, leases, properties, onAdd, onUpdate, onDelete }: 
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h2 className="text-xl font-bold tracking-tight text-gray-900">Tenant Directory</h2>
-                <button onClick={() => { setEditingId('new'); setEditForm({ name: '', email: '' }); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center shadow-sm">
+                <button onClick={() => { setEditingId('new'); setEditForm({ name: '', email: '', phone: '' }); }} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 flex items-center shadow-sm">
                     <UserPlus size={16} className="mr-1.5" /> Add Tenant
                 </button>
             </div>
@@ -209,6 +324,10 @@ const TenantsTab = ({ tenants, leases, properties, onAdd, onUpdate, onDelete }: 
                             <label className="block text-sm font-medium text-gray-700">Primary Email</label>
                             <input type="email" value={editForm.email || ''} onChange={(e) => setEditForm({...editForm, email: e.target.value})} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2" />
                         </div>
+                        <div className="md:col-span-2">
+                            <label className="block text-sm font-medium text-gray-700">Phone Number <span className="text-gray-400 font-normal">(Optional)</span></label>
+                            <input type="tel" value={editForm.phone || ''} onChange={(e) => setEditForm({...editForm, phone: e.target.value})} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2" placeholder="(555) 123-4567" />
+                        </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700">Co-Tenant Name</label>
                             <input type="text" value={editForm.coTenantName || ''} onChange={(e) => setEditForm({...editForm, coTenantName: e.target.value})} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2" />
@@ -216,6 +335,10 @@ const TenantsTab = ({ tenants, leases, properties, onAdd, onUpdate, onDelete }: 
                         <div>
                             <label className="block text-sm font-medium text-gray-700">Co-Tenant Email</label>
                             <input type="email" value={editForm.coTenantEmail || ''} onChange={(e) => setEditForm({...editForm, coTenantEmail: e.target.value})} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">Co-Tenant Phone</label>
+                            <input type="tel" value={editForm.phone2 || ''} onChange={(e) => setEditForm({...editForm, phone2: e.target.value})} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2" />
                         </div>
                     </div>
                     <div className="flex space-x-3 pt-2">
@@ -232,8 +355,12 @@ const TenantsTab = ({ tenants, leases, properties, onAdd, onUpdate, onDelete }: 
                             <div className="space-y-3">
                                 <input type="text" placeholder="Name" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="block w-full border-gray-300 rounded shadow-sm p-2 text-sm" />
                                 <input type="email" placeholder="Email" value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})} className="block w-full border-gray-300 rounded shadow-sm p-2 text-sm" />
+                                <input type="tel" placeholder="Phone" value={editForm.phone || ''} onChange={e => setEditForm({...editForm, phone: e.target.value})} className="block w-full border-gray-300 rounded shadow-sm p-2 text-sm" />
                                 <input type="text" placeholder="Co-Tenant Name" value={editForm.coTenantName} onChange={e => setEditForm({...editForm, coTenantName: e.target.value})} className="block w-full border-gray-300 rounded shadow-sm p-2 text-sm" />
-                                <input type="email" placeholder="Co-Tenant Email" value={editForm.coTenantEmail} onChange={e => setEditForm({...editForm, coTenantEmail: e.target.value})} className="block w-full border-gray-300 rounded shadow-sm p-2 text-sm" />
+                                <div className="grid grid-cols-2 gap-2">
+                                    <input type="email" placeholder="Co-Tenant Email" value={editForm.coTenantEmail} onChange={e => setEditForm({...editForm, coTenantEmail: e.target.value})} className="block w-full border-gray-300 rounded shadow-sm p-2 text-sm" />
+                                    <input type="tel" placeholder="Co-Tenant Phone" value={editForm.phone2 || ''} onChange={e => setEditForm({...editForm, phone2: e.target.value})} className="block w-full border-gray-300 rounded shadow-sm p-2 text-sm" />
+                                </div>
                                 <div className="flex space-x-2 pt-2">
                                     <button onClick={handleSave} className="bg-blue-600 text-white px-3 py-1.5 rounded text-xs flex-1">Save</button>
                                     <button onClick={() => setEditingId(null)} className="text-gray-500 px-3 py-1.5 rounded text-xs bg-gray-100 flex-1">Cancel</button>
@@ -254,7 +381,12 @@ const TenantsTab = ({ tenants, leases, properties, onAdd, onUpdate, onDelete }: 
                                 </div>
                                 <div className="space-y-1 mt-3">
                                     <p className="text-sm text-blue-600 truncate">{t.email}</p>
-                                    {t.coTenantEmail && <p className="text-sm text-gray-500 truncate">{t.coTenantEmail}</p>}
+                                    {t.phone && <p className="text-sm text-gray-600 truncate">{t.phone}</p>}
+                                    {(t.coTenantEmail || t.phone2) && (
+                                        <p className="text-sm text-gray-500 truncate">
+                                            {t.coTenantEmail} {t.coTenantEmail && t.phone2 ? '•' : ''} {t.phone2}
+                                        </p>
+                                    )}
                                 </div>
                                 <div className="mt-4 pt-3 border-t border-gray-50">
                                      <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Active Leases</h4>
@@ -285,8 +417,13 @@ const TenantsTab = ({ tenants, leases, properties, onAdd, onUpdate, onDelete }: 
 
 // --- LEASES TAB ---
 const LeasesTab = ({ leases, properties, tenants, onAdd, onUpdate, onDelete }: any) => {
+    const { addTenant } = useStore();
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editForm, setEditForm] = useState<Partial<Lease>>({});
+    
+    // Inline Tenant Creation State
+    const [isCreatingTenant, setIsCreatingTenant] = useState(false);
+    const [newTenantForm, setNewTenantForm] = useState({ name: '', email: '', phone: '' });
 
     const handleSave = () => {
         if (!editForm.propertyId || !editForm.tenantId || !editForm.monthlyRent) return;
@@ -336,12 +473,51 @@ const LeasesTab = ({ leases, properties, tenants, onAdd, onUpdate, onDelete }: a
                                 </select>
                             </div>
                         )}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Tenant</label>
-                            <select value={editForm.tenantId || ''} onChange={e => setEditForm({...editForm, tenantId: e.target.value})} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2 bg-white">
-                                <option value="">Select Tenant...</option>
-                                {tenants.map((t:any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                            </select>
+                        <div className="col-span-1 md:col-span-2 relative p-4 bg-gray-50 rounded-lg border border-gray-200">
+                            <div className="flex justify-between items-center mb-1">
+                                <label className="block text-sm font-medium text-gray-700">Tenant</label>
+                                {!isCreatingTenant && (
+                                    <button onClick={(e) => { e.preventDefault(); setIsCreatingTenant(true); }} className="text-xs text-blue-600 font-medium hover:underline flex items-center">
+                                        <Plus size={12} className="mr-0.5" /> New Tenant
+                                    </button>
+                                )}
+                            </div>
+                            
+                            {isCreatingTenant ? (
+                                <div className="space-y-3 mt-2 bg-white p-3 rounded border shadow-sm">
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-700">Full Name</label>
+                                        <input autoFocus type="text" value={newTenantForm.name} onChange={e => setNewTenantForm({...newTenantForm, name: e.target.value})} className="mt-1 block w-full text-sm border-gray-300 rounded-md p-1.5 border" placeholder="e.g. John Doe" />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700">Email</label>
+                                            <input type="email" value={newTenantForm.email} onChange={e => setNewTenantForm({...newTenantForm, email: e.target.value})} className="mt-1 block w-full text-sm border-gray-300 rounded-md p-1.5 border" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700">Phone</label>
+                                            <input type="tel" value={newTenantForm.phone} onChange={e => setNewTenantForm({...newTenantForm, phone: e.target.value})} className="mt-1 block w-full text-sm border-gray-300 rounded-md p-1.5 border" />
+                                        </div>
+                                    </div>
+                                    <div className="flex space-x-2 pt-1">
+                                        <button onClick={(e) => {
+                                            e.preventDefault();
+                                            if (!newTenantForm.name) return;
+                                            const newId = crypto.randomUUID();
+                                            addTenant({ id: newId, ...newTenantForm });
+                                            setEditForm({...editForm, tenantId: newId});
+                                            setIsCreatingTenant(false);
+                                            setNewTenantForm({ name: '', email: '', phone: '' });
+                                        }} className="bg-blue-600 text-white px-3 py-1 rounded text-xs font-medium hover:bg-blue-700">Save & Select</button>
+                                        <button onClick={(e) => { e.preventDefault(); setIsCreatingTenant(false); }} className="text-gray-500 px-3 py-1 rounded text-xs bg-gray-100 hover:bg-gray-200">Cancel</button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <select value={editForm.tenantId || ''} onChange={e => setEditForm({...editForm, tenantId: e.target.value})} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm p-2 bg-white">
+                                    <option value="">Select Tenant...</option>
+                                    {tenants.map((t:any) => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                </select>
+                            )}
                         </div>
                         <div>
                             <label className="block text-sm font-medium text-gray-700">Base Monthly Rent ($)</label>
@@ -378,7 +554,8 @@ const LeasesTab = ({ leases, properties, tenants, onAdd, onUpdate, onDelete }: a
                                 <span className="font-semibold text-gray-900 text-sm tracking-wide">{getPropName(l.propertyId)} {l.unitId && `— ${getUnitName(l.propertyId, l.unitId)}`}</span>
                             </div>
                             <div className="flex space-x-2">
-                                <button onClick={() => { if(confirm('Delete Lease?')) onDelete(l.id); }} className="text-gray-400 hover:text-red-600"><Trash2 size={16} /></button>
+                                <button onClick={() => { setEditingId(l.id); setEditForm(l); }} className="text-gray-400 hover:text-blue-600 p-1"><Edit2 size={16} /></button>
+                                <button onClick={() => { if(confirm('Delete Lease?')) onDelete(l.id); }} className="text-gray-400 hover:text-red-600 p-1"><Trash2 size={16} /></button>
                             </div>
                         </div>
                         <div className="p-5 grid grid-cols-2 md:grid-cols-4 gap-6">
@@ -399,6 +576,33 @@ const LeasesTab = ({ leases, properties, tenants, onAdd, onUpdate, onDelete }: a
                                 <div className="text-sm text-gray-900">${l.securityDeposit?.toLocaleString()}</div>
                             </div>
                         </div>
+                        {editingId === l.id && (
+                            <div className="p-5 border-t border-gray-100 bg-gray-50 space-y-4">
+                                <h4 className="text-sm font-semibold text-gray-700">Edit Basic Information</h4>
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-500">Base Rent ($)</label>
+                                        <input type="number" value={editForm.monthlyRent} onChange={e => setEditForm({...editForm, monthlyRent: parseFloat(e.target.value)})} className="mt-1 block w-full rounded-md shadow-sm border-gray-300 p-2 text-sm border bg-white" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-500">Deposit ($)</label>
+                                        <input type="number" value={editForm.securityDeposit} onChange={e => setEditForm({...editForm, securityDeposit: parseFloat(e.target.value)})} className="mt-1 block w-full rounded-md shadow-sm border-gray-300 p-2 text-sm border bg-white" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-500">Start Date</label>
+                                        <input type="date" value={editForm.startDate} onChange={e => setEditForm({...editForm, startDate: e.target.value})} className="mt-1 block w-full rounded-md shadow-sm border-gray-300 p-2 text-sm border bg-white" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-500">End Date</label>
+                                        <input type="date" value={editForm.endDate} onChange={e => setEditForm({...editForm, endDate: e.target.value})} className="mt-1 block w-full rounded-md shadow-sm border-gray-300 p-2 text-sm border bg-white" />
+                                    </div>
+                                </div>
+                                <div className="flex space-x-2 pt-2">
+                                    <button onClick={handleSave} className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium">Save Details</button>
+                                    <button onClick={() => setEditingId(null)} className="text-gray-600 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-200 bg-white border border-gray-200 shadow-sm">Cancel</button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 ))}
                 {leases.length === 0 && editingId !== 'new' && (

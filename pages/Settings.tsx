@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useStore } from '../hooks/useStore';
-import { Save, User, Tags, Mail, Terminal as TerminalIcon } from 'lucide-react';
+import { Save, User, Tags, Mail, Database, AlertTriangle, Terminal as TerminalIcon } from 'lucide-react';
 import { ErrorLog } from './ErrorLog';
 
-type Tab = 'profile' | 'categories' | 'email' | 'logs';
+type Tab = 'profile' | 'categories' | 'email' | 'data' | 'logs';
 
 export const Settings: React.FC = () => {
-  const { data, updateSettings } = useStore();
+  const { data, updateSettings, clearAllData } = useStore();
   const [formData, setFormData] = useState(data.settings);
   const [msg, setMsg] = useState('');
   const [activeTab, setActiveTab] = useState<Tab>('profile');
@@ -51,6 +51,9 @@ export const Settings: React.FC = () => {
                <button onClick={() => setActiveTab('email')} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition ${activeTab === 'email' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
                    <Mail size={18} /><span>Email Delivery</span>
                </button>
+               <button onClick={() => setActiveTab('data')} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition ${activeTab === 'data' ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+                   <Database size={18} /><span>Data Management</span>
+               </button>
                <button onClick={() => setActiveTab('logs')} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-sm font-medium transition ${activeTab === 'logs' ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
                    <TerminalIcon size={18} /><span>System Logs</span>
                </button>
@@ -75,6 +78,10 @@ export const Settings: React.FC = () => {
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700">Support Email</label>
                                         <input type="email" name="landlordEmail" value={formData.landlordEmail} onChange={handleChange} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm border p-2.5 focus:border-blue-500 focus:ring-blue-500" />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <label className="block text-sm font-medium text-gray-700">Business Phone</label>
+                                        <input type="tel" name="landlordPhone" value={formData.landlordPhone || ''} onChange={handleChange} className="mt-1 block w-full border-gray-300 rounded-md shadow-sm border p-2.5 focus:border-blue-500 focus:ring-blue-500" placeholder="(555) 123-4567" />
                                     </div>
                                     <div className="md:col-span-2">
                                         <label className="block text-sm font-medium text-gray-700">Business Address</label>
@@ -126,6 +133,21 @@ export const Settings: React.FC = () => {
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700">Gmail App Password</label>
                                         <input type="password" name="gmailAppPassword" value={formData.gmailAppPassword || ''} onChange={handleChange} placeholder="16-character app password" className="mt-1 block w-full border-gray-300 rounded-md shadow-sm border p-2.5 font-mono text-sm focus:border-blue-500 focus:ring-blue-500" />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'data' && (
+                            <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-8">
+                                <div className="pt-2">
+                                    <h3 className="text-lg font-semibold text-red-600 border-b pb-2 mb-4 flex items-center"><AlertTriangle size={18} className="mr-2" /> Danger Zone</h3>
+                                    <div className="bg-red-50 border border-red-100 p-5 rounded-xl flex items-start space-x-4 justify-between">
+                                        <div>
+                                            <h4 className="font-bold text-red-900">Testing Sandbox Reset</h4>
+                                            <p className="text-sm text-red-800 mt-1 max-w-sm">This instantly wipes all local application records, unlinks accounts, and purges the cloud partition, restoring the default schema exactly. This cannot be undone.</p>
+                                        </div>
+                                        <button type="button" onClick={() => { if(confirm('Are you absolutely sure? This will wipe ALL properties, tenants, leases, settings, and documents and reload the app as a blank slate.')) clearAllData(); }} className="px-5 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold shadow-sm whitespace-nowrap">Hard Reset</button>
                                     </div>
                                 </div>
                             </div>
