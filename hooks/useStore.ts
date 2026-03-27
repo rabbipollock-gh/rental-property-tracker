@@ -80,9 +80,22 @@ export const useStore = () => {
   // Load from Supabase on mount
   useEffect(() => {
     const loadData = async () => {
-      const remoteData = await fetchAppData();
-      if (remoteData) {
-        setData(migrateLegacyData(remoteData));
+      let remoteData = await fetchAppData();
+      
+      // Auto-Hydration Script (Phase 14)
+      if (!remoteData) {
+         import('../services/supabaseService').then(async ({ checkLegacyBlobData, saveAppData }) => {
+            const legacyBlob = await checkLegacyBlobData();
+            if (legacyBlob) {
+                console.log("Hydrating legacy JSON blob into new Multi-Tenant Relational Tables...");
+                remoteData = legacyBlob;
+                // Instantly burst the old JSON into the new SQL tables
+                await saveAppData(legacyBlob);
+                setData(migrateLegacyData(remoteData));
+            }
+         });
+      } else {
+         setData(migrateLegacyData(remoteData));
       }
     };
     loadData();

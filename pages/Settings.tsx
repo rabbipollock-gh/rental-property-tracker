@@ -149,6 +149,25 @@ export const Settings: React.FC = () => {
                                         </div>
                                         <button type="button" onClick={() => { if(confirm('Are you absolutely sure? This will wipe ALL properties, tenants, leases, settings, and documents and reload the app as a blank slate.')) clearAllData(); }} className="px-5 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold shadow-sm whitespace-nowrap">Hard Reset</button>
                                     </div>
+                                    <h3 className="text-lg font-semibold text-blue-600 border-b pb-2 mb-4 mt-8 flex items-center"><Database size={18} className="mr-2" /> SaaS Migration Tools</h3>
+                                    <div className="bg-blue-50 border border-blue-100 p-5 rounded-xl flex items-start space-x-4 justify-between">
+                                        <div>
+                                            <h4 className="font-bold text-blue-900">Force Cloud Re-Hydration</h4>
+                                            <p className="text-sm text-blue-800 mt-1 max-w-sm">Manually command the backend to completely overwrite your new relational SQL tables with your legacy offline JSON backup. Use this if your recent auto-migration was interrupted or dropped transactions.</p>
+                                        </div>
+                                        <button type="button" onClick={async () => {
+                                            if (confirm("This will overwrite your new relational tables with your legacy offline data. Are you sure?")) {
+                                                const { checkLegacyBlobData, saveAppData } = await import('../services/supabaseService');
+                                                const legacyBlob = await checkLegacyBlobData();
+                                                if (legacyBlob) {
+                                                    await saveAppData(legacyBlob);
+                                                    alert("Database Re-Hydration successful! Please completely refresh your browser to see your transactions.");
+                                                } else {
+                                                    alert("No legacy offline data found to hydrate.");
+                                                }
+                                            }
+                                        }} className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold shadow-sm whitespace-nowrap">Re-Hydrate DB</button>
+                                    </div>
                                 </div>
                             </div>
                         )}
