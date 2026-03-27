@@ -122,6 +122,8 @@ export interface Tenant {
   coTenantEmail?: string;
   phone?: string;
   phone2?: string;
+  authId?: string;
+  ownerId?: string;
 }
 
 export interface Lease {
@@ -145,6 +147,21 @@ export interface DocumentItem {
   propertyId?: string;
   tenantId?: string;
   monthId?: string;
+}
+
+export interface MaintenanceTicket {
+  id: string;
+  owner_id: string;
+  tenant_id: string;
+  property_id: string;
+  title: string;
+  description: string;
+  category: 'Plumbing' | 'Electrical' | 'HVAC' | 'Appliance' | 'Structural' | 'Other';
+  status: 'Open' | 'In Progress' | 'Scheduled' | 'Resolved';
+  priority: 'Low' | 'Normal' | 'High' | 'Emergency';
+  image_url?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface AppData {

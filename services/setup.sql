@@ -134,3 +134,23 @@ CREATE POLICY "Strict Isolation - Documents" ON documents FOR ALL USING (auth.ui
 
 -- Legacy Table (If existing, clean up data for sync script)
 -- Do not delete rental_tracker_data quite yet until the React sync script runs!
+
+-- ==========================================
+-- TENANT PORTAL RLS POLICIES (Phase 12)
+-- Allows renters to read data explicitly linked to them
+-- ==========================================
+
+-- 1. Tenant can read their own profile via their Authenticated Email
+CREATE POLICY "Tenant Profile Access" ON tenants FOR SELECT USING (email = (select auth.jwt()->>'email'));
+
+-- 2. Tenant can read leases they are signed on
+CREATE POLICY "Tenant Lease Access" ON leases FOR SELECT USING (tenant_id IN (SELECT id FROM tenants WHERE email = (select auth.jwt()->>'email')));
+
+-- 3. Tenant can read ledgers (Month Records) linked to their active lease
+CREATE POLICY "Tenant Ledger Access" ON month_records FOR SELECT USING (lease_id IN (SELECT id FROM leases WHERE tenant_id IN (SELECT id FROM tenants WHERE email = (select auth.jwt()->>'email'))));
+
+-- 4. Tenant can read the specific Property they are assigned to
+CREATE POLICY "Tenant Property Access" ON properties FOR SELECT USING (id IN (SELECT property_id FROM leases WHERE tenant_id IN (SELECT id FROM tenants WHERE email = (select auth.jwt()->>'email'))));
+
+-- 5. Tenant can read Documents explicitly shared with their tenant_id
+CREATE POLICY "Tenant Document Access" ON documents FOR SELECT USING (tenant_id IN (SELECT id FROM tenants WHERE email = (select auth.jwt()->>'email')));

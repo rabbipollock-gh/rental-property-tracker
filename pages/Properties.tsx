@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useStore } from '../hooks/useStore';
-import { Building, Users, FileSignature, Plus, Edit2, Trash2, Home, UserPlus, MapPin, Upload, Download } from 'lucide-react';
+import { Building, Users, FileSignature, Plus, Edit2, Trash2, Home, UserPlus, MapPin, Upload, Download, ExternalLink } from 'lucide-react';
 import { Property, Tenant, Lease, Unit, ImportResult } from '../types';
 import { Modal } from '../components/Modal';
 import * as Papa from 'papaparse';
@@ -369,6 +369,17 @@ const TenantsTab = ({ tenants, leases, properties, onAdd, onUpdate, onDelete }: 
                         ) : (
                             <>
                                 <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex space-x-1">
+                                    <button onClick={() => {
+                                        if (!t.email) {
+                                            alert("Please add an email address to this tenant first.");
+                                            return;
+                                        }
+                                        const appUrl = window.location.origin + window.location.pathname;
+                                        const subject = encodeURIComponent("You've been invited to the Tenant Portal");
+                                        const body = encodeURIComponent(`Hi ${t.name},\n\nYour landlord has invited you to access your Tenant Portal.\n\nPlease visit ${appUrl} and click "Magic Link Sign In" using your email address: ${t.email}\n\nThank you.`);
+                                        window.location.href = `mailto:${t.email}?subject=${subject}&body=${body}`;
+                                    }} title="Invite to Portal" className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded"><Users size={14} /></button>
+                                    <button onClick={() => window.open(`/#/preview/${t.id}`, '_blank')} title="Preview Tenant Portal" className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded"><ExternalLink size={14} /></button>
                                     <button onClick={() => { setEditingId(t.id); setEditForm(t); }} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"><Edit2 size={14} /></button>
                                     <button onClick={() => { if(confirm('Delete tenant?')) onDelete(t.id); }} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"><Trash2 size={14} /></button>
                                 </div>

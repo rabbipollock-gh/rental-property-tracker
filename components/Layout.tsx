@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation, Outlet } from 'react-router-dom';
-import { LayoutDashboard, Settings, FileText, Building2, ArrowRightLeft, FolderOpen, Plus, DollarSign, Receipt, MinusCircle, X } from 'lucide-react';
+import { LayoutDashboard, Settings, FileText, Building2, ArrowRightLeft, FolderOpen, Plus, DollarSign, Receipt, MinusCircle, X, Wrench } from 'lucide-react';
 import { useStore } from '../hooks/useStore';
 import { Modal } from './Modal';
 import { ExpenseModal } from './ExpenseModal';
@@ -100,6 +100,12 @@ export const Layout: React.FC = () => {
             icon={Building2} 
             label="Properties & Leases" 
             active={location.pathname === '/properties'} 
+          />
+          <NavItem 
+            to="/maintenance" 
+            icon={Wrench} 
+            label="Maintenance" 
+            active={location.pathname === '/maintenance'} 
           />
           <div className="pt-4 pb-2 px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider">
             Management

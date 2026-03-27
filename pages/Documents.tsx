@@ -131,7 +131,7 @@ export const Documents: React.FC = () => {
               </div>
               <div>
                   <label className="block text-sm font-medium text-gray-700">Document Type</label>
-                  <select value={editForm.type || 'Lease'} onChange={e => setEditForm({...editForm, type: e.target.value})} className="mt-1 block w-full border border-gray-300 rounded-md p-2 shadow-sm bg-white">
+                  <select value={editForm.type || 'Lease'} onChange={e => setEditForm({...editForm, type: e.target.value as any})} className="mt-1 block w-full border border-gray-300 rounded-md p-2 shadow-sm bg-white">
                       <option value="Lease">Lease Agreement</option>
                       <option value="Receipt">Expense Receipt</option>
                       <option value="Tax">Tax Document</option>

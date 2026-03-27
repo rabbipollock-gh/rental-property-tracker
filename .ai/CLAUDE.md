@@ -1,0 +1,1 @@
+Please read the documents in this folder (especially walkthrough.md and implementation_plan.md) to understand the current architecture and the completed Phase 12 (Tenant Portal) before starting the next Phase.
